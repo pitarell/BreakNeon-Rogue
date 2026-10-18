@@ -1,0 +1,2638 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BreakNeon Rogue - Arkanoid Roguelite</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Rajdhani', sans-serif;
+            background-color: #05050d;
+            color: #f3f4f6;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+        .font-orbitron {
+            font-family: 'Orbitron', sans-serif;
+        }
+        .glow-cyan {
+            text-shadow: 0 0 10px rgba(6, 182, 212, 0.7), 0 0 20px rgba(6, 182, 212, 0.4);
+        }
+        .glow-pink {
+            text-shadow: 0 0 10px rgba(236, 72, 153, 0.7), 0 0 20px rgba(236, 72, 153, 0.4);
+        }
+        .glow-box-cyan {
+            box-shadow: 0 0 15px rgba(6, 182, 212, 0.4), inset 0 0 15px rgba(6, 182, 212, 0.2);
+        }
+        .glow-box-pink {
+            box-shadow: 0 0 15px rgba(236, 72, 153, 0.4), inset 0 0 15px rgba(236, 72, 153, 0.2);
+        }
+        .card-hover {
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-hover:hover {
+            transform: translateY(-6px) scale(1.02);
+        }
+        canvas {
+            display: block;
+            background: #030208;
+            width: 100%;
+            height: 100%;
+        }
+        #game-container {
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) 250px;
+            grid-template-rows: auto auto minmax(0, 1fr);
+            gap: 6px;
+            width: min(100vw, 1120px) !important;
+            max-width: 1120px !important;
+            height: 100dvh !important;
+            max-height: 100dvh !important;
+        }
+        #hud, #game-controls { grid-column: 1 / -1; }
+        #board-shell { grid-column: 1; grid-row: 3; aspect-ratio: 1 / 1; width: min(100%, calc(100dvh - 128px)); align-self: start; justify-self: center; }
+        #run-info-panel { grid-column: 2; grid-row: 3; min-height: 0; overflow-y: auto; }
+        @media (orientation: portrait), (max-width: 760px) {
+            body { overflow-y: auto; }
+            #game-container { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; height: auto !important; min-height: 100dvh; }
+            #hud, #game-controls, #board-shell, #run-info-panel { grid-column: 1; }
+            #hud { grid-row: 1; }
+            #game-controls { grid-row: 2; }
+            #board-shell { grid-row: 3; width: min(100%, calc(100vw - 16px)); }
+            #run-info-panel { grid-row: 4; width: 100%; max-height: 30dvh; }
+        }
+    </style>
+</head>
+<body class="h-[100dvh] w-screen flex flex-col justify-center items-center relative overflow-hidden">
+
+    <!-- GAME CONTAINER -->
+    <div id="game-container" class="relative w-full max-w-4xl h-full max-h-[850px] flex flex-col items-center justify-center p-2 sm:p-4">
+        
+        <!-- HEADER HUD -->
+        <div id="hud" class="w-full flex items-center justify-between gap-1 bg-slate-900/80 backdrop-blur border border-cyan-500/30 rounded-t-xl px-4 py-2 text-sm sm:text-base mb-1 shadow-lg shadow-cyan-950/40">
+            <!-- HP & Shield -->
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-1.5">
+                    <i data-lucide="heart" class="w-5 h-5 text-pink-500 fill-pink-500/30"></i>
+                    <span id="hp-display" class="font-bold font-orbitron text-pink-400">100/100</span>
+                </div>
+                <div id="shield-indicator" class="hidden sm:flex items-center space-x-1 text-cyan-400 text-xs bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-500/40">
+                    <i data-lucide="shield" class="w-3.5 h-3.5"></i>
+                    <span id="shield-text">ESCUDO ATIVO</span>
+                </div>
+            </div>
+
+            <!-- Floor & Stage & Row Drop Timer -->
+            <div class="text-center flex items-center gap-3 sm:gap-6">
+                <div>
+                    <span class="text-xs text-slate-400 uppercase tracking-widest block">Andar</span>
+                    <span id="floor-display" class="font-orbitron font-extrabold text-cyan-300 text-lg sm:text-xl glow-cyan">1-1</span>
+                </div>
+                <!-- ROW DROP TIMER DISPLAY -->
+                <div id="drop-timer-container" class="bg-red-950/40 border border-red-500/40 px-2.5 py-1 rounded-lg flex items-center gap-1.5">
+                    <i data-lucide="arrow-down-to-line" class="w-4 h-4 text-red-400 animate-bounce"></i>
+                    <div class="text-left">
+                        <span class="text-[10px] text-red-400 font-semibold block uppercase leading-none">Avanço</span>
+                        <span id="drop-timer-display" class="font-orbitron font-bold text-red-300 text-sm leading-none">60s</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats & Coins -->
+            <div class="flex items-center space-x-4">
+                <div class="flex items-center space-x-1.5 bg-amber-950/40 px-2.5 py-1 rounded-lg border border-amber-500/30">
+                    <i data-lucide="coins" class="w-4 h-4 text-amber-400"></i>
+                    <span id="coins-display" class="font-orbitron font-bold text-amber-300 text-base">100.00</span>
+                </div>
+                <div class="text-right">
+                    <span class="text-xs text-slate-400 block sm:inline">Score:</span>
+                    <span id="score-display" class="font-orbitron font-bold text-white">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="game-controls" class="w-full flex gap-2 justify-end py-1 text-xs">
+            <button id="pause-btn" class="px-3 py-1 rounded bg-slate-800 border border-cyan-800">⏸ Pausar (P)</button>
+            <button id="fullscreen-btn" class="px-3 py-1 rounded bg-slate-800 border border-cyan-800">⛶ Tela cheia</button>
+        </div>
+
+        <!-- CANVAS GAME BOARD -->
+        <div id="board-shell" class="relative w-full rounded-xl overflow-hidden border border-cyan-500/30 shadow-2xl shadow-cyan-900/20">
+            <canvas id="gameCanvas" class="w-full h-full"></canvas>
+
+            <!-- START SCREEN OVERLAY -->
+            <div id="start-screen" class="absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20">
+                <div class="relative mb-10">
+                    <h1 class="font-orbitron font-black text-3xl sm:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-pink-500 to-purple-500 glow-cyan tracking-wider">
+                        BREAK<span class="text-cyan-300">NEON</span><span class="text-pink-500"> ROGUE</span>
+                    </h1>
+                </div>
+                <div class="flex flex-col items-center w-full max-w-xs gap-3">
+                    <button id="start-btn" class="w-full font-orbitron font-bold text-base px-8 py-3.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 rounded-xl shadow-lg shadow-cyan-500/30 glow-box-cyan transition-all flex items-center justify-center gap-2 cursor-pointer">
+                        <i data-lucide="layers" class="w-5 h-5"></i> CAMPANHA
+                    </button>
+                    <button id="infinite-btn" class="w-full font-orbitron font-bold text-sm px-8 py-3 bg-amber-600 hover:bg-amber-500 text-slate-950 rounded-xl border border-amber-300/40 transition-all flex items-center justify-center gap-2 cursor-pointer">
+                        <i data-lucide="infinity" class="w-4 h-4"></i> MODO INFINITO
+                    </button>
+                    <button id="continue-btn" class="w-full font-orbitron font-bold text-sm px-8 py-3 bg-purple-600 hover:bg-purple-500 disabled:bg-slate-800 disabled:text-slate-500 text-white rounded-xl border border-purple-400/40 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed">
+                        <i data-lucide="save" class="w-4 h-4"></i> CONTINUAR
+                    </button>
+                </div>
+            </div>
+
+            <!-- CUSTOMIZATION SCREEN -->
+            <div id="customization-screen" class="hidden absolute inset-0 bg-slate-950/98 backdrop-blur-md flex flex-col items-center justify-center p-5 text-center z-30 overflow-y-auto">
+                <h2 class="font-orbitron font-extrabold text-2xl sm:text-3xl text-cyan-300 mb-2">PERSONALIZAÇÃO</h2>
+                <p id="selected-mode-label" class="font-orbitron text-xs text-purple-300 mb-5">CAMPANHA</p>
+                <div class="bg-slate-900/90 border border-cyan-500/30 rounded-xl p-4 max-w-md w-full mb-5 space-y-4">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-300 font-medium">Cor da Raquete:</span>
+                        <div id="paddle-color-picker" class="flex gap-2">
+                            <button data-color="#06b6d4" class="paddle-color-btn w-6 h-6 rounded-full bg-cyan-500 border-2 border-white scale-110 shadow-lg shadow-cyan-500/50 transition-all"></button>
+                            <button data-color="#ec4899" class="paddle-color-btn w-6 h-6 rounded-full bg-pink-500 border-2 border-transparent hover:scale-105 transition-all"></button>
+                            <button data-color="#10b981" class="paddle-color-btn w-6 h-6 rounded-full bg-emerald-500 border-2 border-transparent hover:scale-105 transition-all"></button>
+                            <button data-color="#f59e0b" class="paddle-color-btn w-6 h-6 rounded-full bg-amber-500 border-2 border-transparent hover:scale-105 transition-all"></button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-300 font-medium">Cor da Bolinha Base:</span>
+                        <div id="ball-color-picker" class="flex gap-2">
+                            <button data-color="#ffffff" class="ball-color-btn w-6 h-6 rounded-full bg-white border-2 border-white scale-110 shadow-lg shadow-white/50 transition-all"></button>
+                            <button data-color="#f43f5e" class="ball-color-btn w-6 h-6 rounded-full bg-rose-500 border-2 border-transparent hover:scale-105 transition-all"></button>
+                            <button data-color="#3b82f6" class="ball-color-btn w-6 h-6 rounded-full bg-blue-500 border-2 border-transparent hover:scale-105 transition-all"></button>
+                            <button data-color="#facc15" class="ball-color-btn w-6 h-6 rounded-full bg-yellow-400 border-2 border-transparent hover:scale-105 transition-all"></button>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex gap-3">
+                    <button id="customization-back-btn" class="font-orbitron text-xs px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-600">VOLTAR</button>
+                    <button id="customization-start-btn" class="font-orbitron font-bold text-sm px-7 py-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-lg shadow-cyan-500/30">INICIAR</button>
+                </div>
+            </div>
+
+            <!-- PERMANENT PROGRESSION OVERLAY -->
+            <div id="meta-screen" class="hidden absolute inset-0 bg-slate-950/98 backdrop-blur-md flex flex-col p-4 sm:p-6 z-40 overflow-y-auto">
+                <div class="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                        <h2 class="font-orbitron font-extrabold text-xl sm:text-3xl text-purple-300">ARQUIVO DO ROGUE</h2>
+                        <p class="text-xs text-slate-400">Essência conquistada: <span id="essence-display" class="text-fuchsia-300 font-bold">0</span> · Relíquias permanentes: <span id="relic-slots-display">0/5</span></p>
+                    </div>
+                    <button id="close-meta-btn" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-sm">VOLTAR</button>
+                </div>
+                <h3 class="font-orbitron text-sm text-cyan-300 mb-2">RELÍQUIAS DA CAMPANHA</h3>
+                <div id="permanent-upgrades" class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5"></div>
+                <div id="relic-grid" class="hidden"></div>
+                <h3 class="font-orbitron text-sm text-emerald-300 mb-2">CONQUISTAS</h3>
+                <div id="achievement-grid" class="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-4"></div>
+            </div>
+
+            <!-- SHOP / UPGRADE SELECTION OVERLAY -->
+            <div id="upgrade-screen" class="hidden absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-between p-4 sm:p-6 z-30 overflow-y-auto">
+                <div class="text-center mt-2">
+                    <div class="flex items-center justify-center gap-2 mb-1">
+                        <i data-lucide="shopping-bag" class="w-6 h-6 text-amber-400"></i>
+                        <span class="text-amber-400 font-orbitron text-xs sm:text-sm font-semibold uppercase tracking-widest">MERCADO CYBERNETICO</span>
+                    </div>
+                    <h2 id="shop-title" class="font-orbitron font-extrabold text-2xl sm:text-3xl text-cyan-300 glow-cyan">LOJA DE UPGRADES</h2>
+                    <p id="shop-balance-row" class="text-slate-400 text-xs mt-1">Seu Saldo: <span id="shop-coins-display" class="font-orbitron text-amber-400 font-bold">100.00</span> Moedas</p>
+                </div>
+
+                <div id="cards-container" class="grid grid-cols-1 md:grid-cols-3 gap-4 w-full max-w-3xl my-auto py-2">
+                    <!-- Dynamic Shop Cards Inserted Here via JS -->
+                </div>
+
+                <!-- SKIP / NO BUY BUTTON -->
+                <button id="skip-upgrade-btn" class="mb-2 font-orbitron font-semibold text-sm px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition-all flex items-center gap-2 cursor-pointer">
+                    <i data-lucide="arrow-right-circle" class="w-4 h-4 text-cyan-400"></i> Não Comprar Nada / Próximo Andar
+                </button>
+            </div>
+
+            <!-- PAUSE OVERLAY -->
+            <div id="pause-screen" class="hidden absolute inset-0 z-40 bg-slate-950/95 flex flex-col items-center justify-center gap-5 p-6 text-center">
+                <h2 class="font-orbitron text-3xl text-cyan-300">JOGO PAUSADO</h2>
+                <label class="text-sm">Volume <input id="volume-slider" type="range" min="0" max="100" value="50" class="align-middle ml-3"></label>
+                <button id="resume-btn" class="px-7 py-3 rounded-lg bg-cyan-600 font-bold">CONTINUAR</button>
+                <button id="pause-menu-btn" class="px-7 py-3 rounded-lg bg-slate-800 border border-slate-600 font-bold text-slate-200">VOLTAR AO MENU PRINCIPAL</button>
+                <p class="text-slate-400 text-xs">P / Esc para pausar · A/D ou setas para mover · Espaço para lançar</p>
+            </div>
+
+            <!-- ROUTE SELECTION OVERLAY -->
+            <div id="route-screen" class="hidden absolute inset-0 z-30 bg-slate-950/95 flex flex-col items-center justify-center gap-4 p-5 text-center overflow-auto">
+                <h2 class="font-orbitron text-xl text-cyan-300">ESCOLHA SEU CAMINHO</h2>
+                <p class="text-sm text-slate-400">O próximo estágio terá um modificador especial.</p>
+                <div class="grid grid-cols-2 gap-3 w-full max-w-lg">
+                    <button data-route="combat" class="p-4 bg-slate-800 border border-cyan-700 rounded-lg">⚔️ Combate normal</button>
+                    <button data-route="treasure" class="p-4 bg-slate-800 border border-amber-700 rounded-lg">💰 Tesouro · moedas</button>
+                    <button data-route="event" class="p-4 bg-slate-800 border border-purple-700 rounded-lg">✨ Evento · raquete ampliada</button>
+                    <button data-route="challenge" class="p-4 bg-slate-800 border border-red-700 rounded-lg">🔥 Desafio · avanço mais rápido</button>
+                </div>
+            </div>
+
+            <!-- GAME OVER / VICTORY OVERLAY -->
+            <div id="gameover-screen" class="hidden absolute inset-0 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-40">
+                <h2 id="gameover-title" class="font-orbitron font-black text-4xl sm:text-5xl text-pink-500 glow-pink mb-2">RUN FINALIZADA</h2>
+                <p id="gameover-subtitle" class="text-slate-400 mb-6 text-sm sm:text-base">Sua plataforma foi destruída no setor <span id="summary-floor" class="text-cyan-400 font-bold">1-1</span></p>
+
+                <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-5 max-w-sm w-full mb-8 text-left space-y-3 font-orbitron">
+                    <div class="flex justify-between border-b border-slate-800 pb-2">
+                        <span class="text-slate-400 text-sm">Pontuação Total:</span>
+                        <span id="summary-score" class="font-bold text-amber-400">0</span>
+                    </div>
+                    <div class="flex justify-between border-b border-slate-800 pb-2">
+                        <span class="text-slate-400 text-sm">Blocos Destruídos:</span>
+                        <span id="summary-bricks" class="font-bold text-cyan-400">0</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400 text-sm">Moedas Coletadas:</span>
+                        <span id="summary-coins" class="font-bold text-yellow-400">100.00</span>
+                    </div>
+                </div>
+
+                <p id="record-info" class="text-xs text-cyan-300 mb-4"></p>
+                <div class="flex flex-col items-center gap-3">
+                    <button id="restart-btn" class="font-orbitron font-bold text-lg px-8 py-3.5 bg-gradient-to-r from-pink-500 to-purple-600 hover:from-pink-400 hover:to-purple-500 text-white rounded-xl shadow-lg shadow-pink-500/30 glow-box-pink transform hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer">
+                        <i data-lucide="rotate-ccw" class="w-5 h-5"></i> CONTINUAR COM RELÍQUIAS
+                    </button>
+                    <button id="gameover-menu-btn" class="font-orbitron font-semibold text-sm px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl border border-slate-600 transition-all cursor-pointer">VOLTAR AO MENU PRINCIPAL</button>
+                </div>
+            </div>
+
+        </div>
+        <aside id="run-info-panel" class="bg-slate-900/90 border border-purple-500/30 rounded-xl p-3 text-xs shadow-xl">
+            <div id="boss-hud" class="hidden mb-3 border border-red-500/50 p-2 rounded-lg bg-red-950/20">
+                <div class="flex justify-between items-center mb-1 gap-2">
+                    <span id="boss-name" class="font-orbitron text-[10px] font-bold text-red-400 uppercase tracking-wider">CHEFE: CORE TITAN</span>
+                    <span id="boss-hp-text" class="font-orbitron text-xs text-red-300">100%</span>
+                </div>
+                <div class="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-red-900/60 p-0.5">
+                    <div id="boss-hp-bar" class="h-full bg-gradient-to-r from-red-600 via-pink-600 to-amber-500 rounded-full transition-all duration-200" style="width: 100%;"></div>
+                </div>
+            </div>
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="font-orbitron text-purple-300 font-bold">RELÍQUIAS PERMANENTES</h3>
+                <span id="campaign-status" class="text-cyan-300">Andar 1</span>
+            </div>
+            <div id="perks-bar" class="flex flex-col gap-2"></div>
+            <div id="laser-info" class="hidden mt-3 p-3 rounded-lg border border-amber-400/50 bg-amber-950/30">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="font-orbitron text-[10px] font-bold text-amber-300">⚡ LASER AUTOMÁTICO</span>
+                    <span id="laser-reload" class="font-orbitron text-[10px] text-white">PRONTO</span>
+                </div>
+                <p class="mt-1 text-[10px] text-slate-300">Dispara automaticamente enquanto houver uma bola em jogo.</p>
+                <div class="mt-2 h-1.5 rounded-full bg-slate-950 overflow-hidden">
+                    <div id="laser-reload-bar" class="h-full bg-gradient-to-r from-amber-500 to-yellow-200 transition-all" style="width:100%"></div>
+                </div>
+            </div>
+            <p class="mt-3 pt-2 border-t border-slate-700 text-slate-400 leading-relaxed">As compras da loja valem apenas durante a partida. As relíquias são salvas após cada chefe e também ao fim da run.</p>
+        </aside>
+    </div>
+
+    <!-- AUDIO SYNTH SYSTEM -->
+    <script>
+        class SoundFX {
+            constructor() {
+                this.ctx = null;
+                this.volume = 0.5;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playHit(freq = 400, type = 'sine', duration = 0.08) {
+                if (!this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(80, this.ctx.currentTime + duration);
+                    gain.gain.setValueAtTime(0.3 * this.volume, this.ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch(e){}
+            }
+
+            playExplosion() {
+                if (!this.ctx) return;
+                try {
+                    const dur = 0.3;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(120, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(20, this.ctx.currentTime + dur);
+                    gain.gain.setValueAtTime(0.4 * this.volume, this.ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + dur);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + dur);
+                } catch(e){}
+            }
+
+            playLaser() {
+                if (!this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(150, this.ctx.currentTime + 0.15);
+                    gain.gain.setValueAtTime(0.2 * this.volume, this.ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.15);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.15);
+                } catch(e){}
+            }
+
+            playPowerup() {
+                if (!this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(200, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.25);
+                    gain.gain.setValueAtTime(0.3 * this.volume, this.ctx.currentTime);
+                    gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.25);
+                } catch(e){}
+            }
+        }
+
+        const sfx = new SoundFX();
+    </script>
+
+    <!-- MAIN GAME ENGINE -->
+    <script>
+        lucide.createIcons();
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const GRID_CELLS = 20;
+        const CELL_SIZE = 40;
+        const BOARD_SIZE = GRID_CELLS * CELL_SIZE;
+        const levelsBeforeBoss = floor => floor <= 3 ? 3 : floor;
+
+        function resizeCanvas() {
+            canvas.width = BOARD_SIZE;
+            canvas.height = BOARD_SIZE;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // UPGRADE DATABASE WITH FIXED TIER COSTS (100 MOEDAS POR NÍVEL)
+        const ALL_UPGRADES = [
+            {
+                id: 'ball_size',
+                title: 'Bolinha Gigante',
+                minFloor: 1,
+                maxLevel: 3,
+                icon: 'circle-dot',
+                color: 'from-purple-500 to-indigo-600',
+                getCost: (lvl) => lvl * 200,
+                getDesc: (lvl) => `Nível ${lvl}: Bola +${[30, 60, 100][lvl - 1]}% maior e +${lvl * 50}% de dano.`,
+                apply: (g, lvl) => {
+                    g.upgradesLevels['ball_size'] = lvl;
+                    const scale = [1.3, 1.6, 2][lvl - 1];
+                    const newRadius = 7 * scale;
+                    if (g.player) {
+                        g.player.ballRadiusMultiplier = scale;
+                        g.player.ballDamageMultiplier = 1 + lvl * 0.5;
+                    }
+                    g.balls.forEach(b => { if (b) b.radius = newRadius; });
+                }
+            },
+            {
+                id: 'paddle_size',
+                title: 'Expandir Raquete',
+                minFloor: 1,
+                maxLevel: 8,
+                icon: 'maximize-2',
+                color: 'from-indigo-500 to-purple-600',
+                getCost: (lvl) => lvl * 100,
+                getDesc: (lvl) => lvl === 1 ? 'Nível 1: Tamanho padrão da raquete.' : `Nível ${lvl}: +${(lvl - 1) * 25}% de largura da raquete.`,
+                apply: (g, lvl) => {
+                    g.upgradesLevels['paddle_size'] = lvl;
+                    const scale = 1 + ((lvl - 1) * 0.25);
+                    if (g.player) g.player.width = g.player.baseWidth * scale;
+                }
+            },
+            {
+                id: 'coin_multiplier',
+                title: 'Protocolo do Magnata',
+                minFloor: 1,
+                maxLevel: 10,
+                icon: 'trending-up',
+                color: 'from-yellow-500 to-amber-600',
+                getCost: (lvl) => lvl * 100,
+                getDesc: (lvl) => `Nível ${lvl}: Aumenta os ganhos de moedas em +${lvl * 5}% (Até +50% no NV 10).`,
+                apply: (g, lvl) => {
+                    g.upgradesLevels['coin_multiplier'] = lvl;
+                    if (g.player) g.player.coinBonusPercent = lvl * 0.05;
+                }
+            },
+            {
+                id: 'fireball',
+                title: 'Bola de Fogo',
+                minFloor: 2,
+                maxLevel: 3,
+                icon: 'flame',
+                color: 'from-orange-500 to-red-600',
+                getCost: (lvl) => lvl * 300,
+                getDesc: (lvl) => `Nível ${lvl}: Incendeia a bola e causa explosão AoE num raio de ${lvl + 1} blocos!`,
+                apply: (g, lvl) => { 
+                    g.upgradesLevels['fireball'] = lvl;
+                    if (g.player) {
+                        g.player.fireball = true;
+                        g.player.fireballLevel = lvl;
+                    } 
+                }
+            },
+            {
+                id: 'heavy_ball',
+                title: 'Bola Perfurante',
+                minFloor: 3,
+                maxLevel: 4,
+                icon: 'disc',
+                color: 'from-slate-400 to-slate-700',
+                getCost: (lvl) => lvl * 300,
+                getDesc: (lvl) => {
+                    const pierces = [2, 3, 5, 8][lvl - 1] || 2;
+                    return `Nível ${lvl}: Bola com espinhos que atravessa até ${pierces} blocos por quique!`;
+                },
+                apply: (g, lvl) => { 
+                    g.upgradesLevels['heavy_ball'] = lvl;
+                    if (g.player) {
+                        g.player.piercingBall = true;
+                        g.player.piercingLevel = lvl;
+                        const piercesMap = [2, 3, 5, 8];
+                        g.player.maxPierces = piercesMap[lvl - 1] || 2;
+                    }
+                }
+            },
+            {
+                id: 'laser_paddle',
+                title: 'Canhões Laser Perfurantes',
+                minFloor: 5,
+                maxLevel: 3,
+                icon: 'zap',
+                color: 'from-amber-400 to-yellow-600',
+                getCost: (lvl) => lvl * 200,
+                getDesc: (lvl) => `Nível ${lvl}: Atira lasers na raquete com +${lvl} de perfuração!`,
+                apply: (g, lvl) => {
+                    g.upgradesLevels['laser_paddle'] = lvl;
+                    if (g.player) {
+                        g.player.hasLaser = true;
+                        g.player.laserLevel = lvl;
+                    }
+                }
+            },
+            {
+                id: 'shield_bottom',
+                title: 'Escudo Holo',
+                minFloor: 1,
+                maxLevel: 2,
+                icon: 'shield-check',
+                color: 'from-emerald-400 to-teal-600',
+                getCost: (lvl) => lvl * 100,
+                getDesc: (lvl) => `Nível ${lvl}: Cria barreira no fundo que previne a bola de cair (${lvl} carga(s)).`,
+                apply: (g, lvl) => {
+                    g.upgradesLevels['shield_bottom'] = lvl;
+                    if (g.player) {
+                        g.player.hasShield = true;
+                        g.player.shieldActive = true;
+                        g.player.shieldCharges = Math.max(g.player.shieldCharges, lvl);
+                    }
+                }
+            },
+            {
+                id: 'crit_strike',
+                title: 'Impacto Crítico',
+                minFloor: 1,
+                maxLevel: 3,
+                icon: 'crosshair',
+                color: 'from-pink-500 to-rose-600',
+                getCost: (lvl) => lvl * 200,
+                getDesc: (lvl) => `Nível ${lvl}: +${lvl * 20}% de chance de causar o triplo de dano.`,
+                apply: (g, lvl) => { 
+                    g.upgradesLevels['crit_strike'] = lvl;
+                    if (g.player) g.player.critChance = lvl * 0.20; 
+                }
+            },
+            {
+                id: 'lifesteal',
+                title: 'Nanorreparo',
+                minFloor: 1,
+                maxLevel: 3,
+                icon: 'heart-pulse',
+                color: 'from-green-500 to-emerald-700',
+                getCost: (lvl) => lvl * 100,
+                getDesc: (lvl) => `Nível ${lvl}: Cura +${lvl * 15} HP e recupera HP ao destruir blocos.`,
+                apply: (g, lvl) => { 
+                    g.upgradesLevels['lifesteal'] = lvl;
+                    if (g.player) {
+                        g.player.hp = Math.min(g.player.maxHp, g.player.hp + (lvl * 15));
+                        g.player.lifesteal = lvl;
+                    }
+                }
+            },
+            {
+                id: 'multiball',
+                title: 'Multiball',
+                minFloor: 1,
+                maxLevel: 3,
+                icon: 'orbit',
+                color: 'from-cyan-500 to-blue-700',
+                getCost: (lvl) => lvl * 200,
+                getDesc: (lvl) => `Nível ${lvl}: Gera ${lvl + 1} bolas ao rebater na raquete (recarga de 12s).`,
+                apply: (g, lvl) => {
+                    g.upgradesLevels.multiball = lvl;
+                    if (g.player) g.player.multiballLevel = lvl;
+                }
+            },
+            {
+                id: 'max_health',
+                title: 'Núcleo de Vitalidade',
+                minFloor: 1,
+                maxLevel: 5,
+                icon: 'heart-plus',
+                color: 'from-rose-500 to-red-700',
+                getCost: (lvl) => lvl * 200,
+                getDesc: (lvl) => `Nível ${lvl}: Aumenta a vida máxima em ${[10, 20, 40, 75, 100][lvl - 1]}%.`,
+                apply: (g, lvl) => {
+                    g.upgradesLevels.max_health = lvl;
+                    if (g.player) {
+                        if (!g.player.healthUpgradeBaseMaxHp) g.player.healthUpgradeBaseMaxHp = g.player.maxHp;
+                        const previousMaxHp = g.player.maxHp;
+                        const bonus = [0.10, 0.20, 0.40, 0.75, 1.00][lvl - 1];
+                        g.player.maxHp = Math.round(g.player.healthUpgradeBaseMaxHp * (1 + bonus));
+                        g.player.hp = Math.min(g.player.maxHp, g.player.hp + Math.max(0, g.player.maxHp - previousMaxHp));
+                    }
+                }
+            }
+        ];
+
+        const RELICS = [
+            { id: 'ember_core', name: 'Núcleo de Brasa', icon: '🔥', desc: '+20% de dano contra blocos e chefes.', apply: g => g.relicPower.damage = 1.2 },
+            { id: 'mirror_shard', name: 'Fragmento Espelhado', icon: '◇', desc: 'Começa cada sala com uma bola adicional.', apply: g => g.relicPower.extraBall = 1 },
+            { id: 'royal_magnet', name: 'Ímã Régio', icon: '🧲', desc: '+35% de moedas recebidas.', apply: g => g.player.coinBonusPercent += 0.35 },
+            { id: 'second_heart', name: 'Segundo Coração', icon: '♥', desc: '+30 de vida máxima em cada run.', apply: g => { g.player.maxHp += 30; g.player.hp += 30; } },
+            { id: 'storm_coil', name: 'Bobina da Tempestade', icon: 'ϟ', desc: 'Cada décimo combo dispara dano elétrico global.', apply: g => g.relicPower.storm = true },
+            { id: 'chronometer', name: 'Cronômetro Partido', icon: '◷', desc: 'Retarda ataques e avanço de fileiras em 15%.', apply: g => g.relicPower.time = 0.85 },
+            { id: 'void_eye', name: 'Olho do Abismo', icon: '◉', desc: '+10% de crítico e revela blocos invisíveis.', apply: g => { g.player.critChance += 0.10; g.relicPower.reveal = true; } },
+            { id: 'phoenix_feather', name: 'Pena da Fênix', icon: '✦', desc: 'Evita uma derrota por run e restaura 35 HP.', apply: g => g.relicPower.revive = 1 }
+        ];
+
+        const PERMANENT_UPGRADES = [
+            { id: 'vitality', name: 'Vitalidade', max: 5, cost: l => 30 + l * 25, desc: l => `+${l * 8} de vida inicial` },
+            { id: 'fortune', name: 'Fortuna', max: 5, cost: l => 35 + l * 30, desc: l => `+${l * 8}% de moedas` },
+            { id: 'arsenal', name: 'Arsenal', max: 5, cost: l => 40 + l * 35, desc: l => `+${l * 3}% de crítico` }
+        ];
+
+        const ACHIEVEMENTS = [
+            { id: 'first_break', name: 'Primeiro Estilhaço', desc: 'Destrua seu primeiro bloco.', reward: 10, test: s => s.totalBricks >= 1 },
+            { id: 'combo_10', name: 'Ritmo Impecável', desc: 'Alcance combo 10.', reward: 20, test: s => s.bestCombo >= 10 },
+            { id: 'boss_1', name: 'Queda do Titã', desc: 'Derrote qualquer chefe.', reward: 30, test: s => s.bossesDefeated >= 1 },
+            { id: 'boss_5', name: 'Caçador de Núcleos', desc: 'Derrote cinco chefes.', reward: 70, test: s => s.bossesDefeated >= 5 },
+            { id: 'floor_5', name: 'Descida Profunda', desc: 'Chegue ao andar 5.', reward: 50, test: s => s.bestFloor >= 5 },
+            { id: 'rich', name: 'Acumulador', desc: 'Tenha 1.000 moedas numa run.', reward: 35, test: s => s.bestCoins >= 1000 },
+            { id: 'collector', name: 'Colecionador', desc: 'Desbloqueie quatro relíquias.', reward: 60, test: s => s.relicsOwned >= 4 },
+            { id: 'veteran', name: 'Veterano Rogue', desc: 'Complete dez runs.', reward: 80, test: s => s.runs >= 10 },
+            { id: 'defeat_titan', name: 'Colosso Tombado', desc: 'Derrote o Titã.', reward: 25, test: s => (s.bossKills?.titan || 0) >= 1 },
+            { id: 'defeat_prism', name: 'Prisma Partido', desc: 'Derrote a Sentinela Prismática.', reward: 30, test: s => (s.bossKills?.prism || 0) >= 1 },
+            { id: 'defeat_hive', name: 'Desinfestação', desc: 'Derrote a Colmeia Mecânica.', reward: 35, test: s => (s.bossKills?.hive || 0) >= 1 },
+            { id: 'defeat_gravity', name: 'Fuga Orbital', desc: 'Derrote o Núcleo Gravitacional.', reward: 45, test: s => (s.bossKills?.gravity || 0) >= 1 },
+            { id: 'defeat_void', name: 'Nada a Temer', desc: 'Derrote o Devorador do Abismo.', reward: 60, test: s => (s.bossKills?.void || 0) >= 1 },
+            ...ALL_UPGRADES.map(u => ({ id: `master_${u.id}`, name: `Domínio: ${u.title}`, desc: `Compre todos os ${u.maxLevel} níveis de ${u.title} em uma única partida.`, reward: 20 + u.maxLevel * 5, test: s => (s.maxedUpgrades || []).includes(u.id) }))
+        ];
+
+        const CAMPAIGN_RELICS = [
+            { id: 'paddle_relic', name: 'Relíquia da Extensão', icon: '▰', desc: '+25% no tamanho base da raquete.', apply: (g, l) => g.player.baseWidth *= 1 + l * 0.25 },
+            { id: 'coin_relic', name: 'Relíquia da Fortuna', icon: '◉', desc: '+35% no ganho de moedas.', apply: (g, l) => g.player.coinBonusPercent += l * 0.35 },
+            { id: 'fire_relic', name: 'Relíquia da Conflagração', icon: '🔥', desc: '+40% na área do dano da bola de fogo.', apply: (g, l) => g.relicPower.fireArea = 1 + l * 0.40 },
+            { id: 'laser_relic', name: 'Relíquia da Perfuração', icon: '↟', desc: '+2 blocos de profundidade para o laser.', apply: (g, l) => g.relicPower.laserDepth = l * 2 },
+            { id: 'life_relic', name: 'Relíquia da Vitalidade', icon: '♥', desc: 'Dobra o total de vida.', apply: (g, l) => { const m = l > 0 ? 2 : 1; g.player.maxHp *= m; g.player.hp = g.player.maxHp; } }
+        ];
+
+        const EXTRA_BRICK_TYPES = {
+            regenerative: { color: '#22c55e', hp: 3 },
+            invisible: { color: '#64748b', hp: 2 },
+            teleporter: { color: '#8b5cf6', hp: 2 },
+            freezing: { color: '#38bdf8', hp: 2 },
+            fortified: { color: '#475569', hp: 6 },
+            electric: { color: '#eab308', hp: 3 },
+            unbreakable: { color: '#0f172a', hp: Infinity }
+        };
+
+        const BOSS_PROFILES = [
+            { id: 'titan', name: 'TITÃ', color: '#f43f5e', hp: 75, hpScale: 18, speed: 1.8, interval: 105, phases: 2 },
+            { id: 'prism', name: 'SENTINELA PRISMÁTICA', color: '#a855f7', hp: 80, hpScale: 20, speed: 2.7, interval: 90, phases: 1 },
+            { id: 'hive', name: 'COLMEIA MECÂNICA', color: '#f59e0b', hp: 90, hpScale: 22, hpMultiplier: 1.5, speed: 2.2, interval: 100, phases: 1 },
+            { id: 'gravity', name: 'NÚCLEO GRAVITACIONAL', color: '#06b6d4', hp: 165, hpScale: 35, hpMultiplier: 1.5, speed: 1.5, interval: 115, phases: 2 },
+            { id: 'void', name: 'DEVORADOR DO ABISMO', color: '#7c3aed', hp: 190, hpScale: 35, hpMultiplier: 1.5, speed: 2.4, interval: 80, phases: 3 }
+        ];
+
+        class Game {
+            constructor() {
+                this.state = 'START';
+                this.floor = 1;
+                this.stage = 1;
+                this.score = 0;
+                this.coins = 100.00;
+                this.bricksDestroyed = 0;
+                this.multiballCooldown = 0;
+
+                this.selectedPaddleColor = '#06b6d4';
+                this.selectedBallColor = '#ffffff';
+
+                this.shakeTime = 0;
+                this.shakeIntensity = 0;
+
+                this.rowDropTimer = 0;
+                this.rowDropInterval = 60000;
+                this.brickFormationDirection = 1;
+
+                this.player = null;
+                this.balls = [];
+                this.bricks = [];
+                this.pickups = [];
+                this.pickupsSpawned = 0;
+                this.effects = [];
+                this.particles = [];
+                this.floatingTexts = [];
+                this.projectiles = [];
+                this.boss = null;
+                this.telegraphs = [];
+                this.combo = 0;
+                this.playerInvulnerable = 0;
+                this.elapsed = 0;
+                this.mode = 'campaign';
+                this.pendingMode = 'campaign';
+                this.wave = 1;
+                this.autoSaveTimer = 0;
+                this.isBonusStage = false;
+                this.bonusSourceFloor = 0;
+                this.freeUpgradeAvailable = false;
+                this.bonusTransitioned = false;
+
+                this.upgradesLevels = {};
+                this.keys = {};
+                this.mouseX = canvas.width / 2;
+                this.pointerActive = false;
+                this.roomType = 'combat';
+                this.routeChoice = null;
+                this.record = JSON.parse(localStorage.getItem('breakoutRogueRecords') || '{"bestScore":0,"bestFloor":1,"runs":0}');
+                this.meta = this.loadMeta();
+                this.relicPower = {};
+
+                this.bindEvents();
+                this.renderMeta();
+            }
+
+            loadMeta() {
+                const defaults = {
+                    version: 1, essence: 0, ownedRelics: ['ember_core'], equippedRelics: ['ember_core'],
+                    permanent: { vitality: 0, fortune: 0, arsenal: 0 }, achievements: [],
+                    campaignRelics: { paddle_relic: 0, coin_relic: 0, fire_relic: 0, laser_relic: 0, life_relic: 0 },
+                    campaign: { active: false, floor: 1, stage: 1 },
+                    stats: { totalBricks: 0, bestCombo: 0, bossesDefeated: 0, bestFloor: 1, bestCoins: 0, runs: 0, bossKills: {}, maxedUpgrades: [], infiniteBest: 0 }
+                };
+                try {
+                    const saved = JSON.parse(localStorage.getItem('breakoutRogueMeta') || '{}');
+                    return {
+                        ...defaults, ...saved,
+                        ownedRelics: Array.isArray(saved.ownedRelics) ? saved.ownedRelics : defaults.ownedRelics,
+                        equippedRelics: Array.isArray(saved.equippedRelics) ? saved.equippedRelics.slice(0, 3) : defaults.equippedRelics,
+                        permanent: { ...defaults.permanent, ...(saved.permanent || {}) },
+                        campaignRelics: { ...defaults.campaignRelics, ...(saved.campaignRelics || {}) },
+                        campaign: { ...defaults.campaign, ...(saved.campaign || {}) },
+                        stats: { ...defaults.stats, ...(saved.stats || {}) },
+                        achievements: Array.isArray(saved.achievements) ? saved.achievements : []
+                    };
+                } catch (_) { return defaults; }
+            }
+
+            saveMeta() {
+                localStorage.setItem('breakoutRogueMeta', JSON.stringify(this.meta));
+                this.renderMeta();
+            }
+
+            saveCurrentGame() {
+                if (this.state !== 'PLAYING' && this.state !== 'PAUSED' && this.state !== 'UPGRADE') return;
+                const snapshot = {
+                    version: 1, active: true, gameState: this.state, mode: this.mode, wave: this.wave,
+                    floor: this.floor, stage: this.stage, score: this.score, coins: this.coins,
+                    bricksDestroyed: this.bricksDestroyed, rowDropTimer: this.rowDropTimer,
+                    player: this.player, balls: this.balls, bricks: this.bricks, boss: this.boss,
+                    pickups: this.pickups, pickupsSpawned: this.pickupsSpawned, projectiles: this.projectiles, effects: this.effects,
+                    upgradesLevels: this.upgradesLevels, combo: this.combo,
+                    brickFormationDirection: this.brickFormationDirection,
+                    isBonusStage: this.isBonusStage, bonusSourceFloor: this.bonusSourceFloor,
+                    freeUpgradeAvailable: this.freeUpgradeAvailable
+                };
+                localStorage.setItem('breakoutRogueCurrentRun', JSON.stringify(snapshot));
+            }
+
+            loadCurrentGame() {
+                try {
+                    const saved = JSON.parse(localStorage.getItem('breakoutRogueCurrentRun') || 'null');
+                    return saved && saved.active ? saved : null;
+                } catch (_) { return null; }
+            }
+
+            clearCurrentGame() {
+                localStorage.removeItem('breakoutRogueCurrentRun');
+            }
+
+            renderMeta() {
+                const summary = document.getElementById('meta-summary');
+                const relicCount = Object.values(this.meta.campaignRelics).filter(v => v > 0).length;
+                if (summary) summary.textContent = `${relicCount}/5 relíquias permanentes · ${this.meta.achievements.length}/${ACHIEVEMENTS.length} conquistas`;
+                const continueBtn = document.getElementById('continue-btn');
+                if (continueBtn) continueBtn.disabled = !Object.values(this.meta.campaignRelics).some(v => v > 0) && !this.meta.campaign.active && !this.loadCurrentGame();
+                const essence = document.getElementById('essence-display');
+                if (essence) essence.textContent = this.meta.essence;
+                const slots = document.getElementById('relic-slots-display');
+                if (slots) slots.textContent = `${relicCount}/5`;
+                const permanent = document.getElementById('permanent-upgrades');
+                if (permanent) permanent.innerHTML = CAMPAIGN_RELICS.map(u => {
+                    const lvl = this.meta.campaignRelics[u.id] || 0;
+                    return `<div class="text-left p-3 rounded-xl border ${lvl ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-700 bg-slate-900'}"><span class="font-orbitron text-xs text-purple-200">${u.icon} ${u.name} · NV ${lvl}</span><span class="block text-xs text-slate-400 mt-1">${u.desc}</span></div>`;
+                }).join('');
+                const relics = document.getElementById('relic-grid');
+                if (relics) relics.innerHTML = '';
+                const achievements = document.getElementById('achievement-grid');
+                if (achievements) achievements.innerHTML = ACHIEVEMENTS.map(a => {
+                    const done = this.meta.achievements.includes(a.id);
+                    return `<div class="p-3 rounded-xl border ${done ? 'border-emerald-500/50 bg-emerald-950/20' : 'border-slate-700 bg-slate-900'}"><span class="font-orbitron text-xs ${done ? 'text-emerald-300' : 'text-slate-300'}">${done ? '✓ ' : '○ '}${a.name}</span><span class="block text-xs text-slate-400 mt-1">${a.desc}</span><span class="block text-[11px] text-fuchsia-300 mt-1">Recompensa: ${a.reward} essência</span></div>`;
+                }).join('');
+                if (window.lucide) lucide.createIcons();
+            }
+
+            buyPermanent(id) {
+                const u = PERMANENT_UPGRADES.find(x => x.id === id), lvl = this.meta.permanent[id] || 0;
+                if (!u || lvl >= u.max) return;
+                const cost = u.cost(lvl);
+                if (this.meta.essence < cost) return;
+                this.meta.essence -= cost;
+                this.meta.permanent[id] = lvl + 1;
+                this.saveMeta();
+            }
+
+            toggleRelic(id) {
+                if (!this.meta.ownedRelics.includes(id)) return;
+                const idx = this.meta.equippedRelics.indexOf(id);
+                if (idx >= 0) this.meta.equippedRelics.splice(idx, 1);
+                else if (this.meta.equippedRelics.length < 3) this.meta.equippedRelics.push(id);
+                this.saveMeta();
+            }
+
+            checkAchievements() {
+                this.meta.stats.relicsOwned = Object.values(this.meta.campaignRelics).filter(v => v > 0).length;
+                let unlocked = false;
+                ACHIEVEMENTS.forEach(a => {
+                    if (!this.meta.achievements.includes(a.id) && a.test(this.meta.stats)) {
+                        this.meta.achievements.push(a.id);
+                        this.meta.essence += a.reward;
+                        this.addFloatingText(`CONQUISTA: ${a.name} +${a.reward} ESSÊNCIA`, canvas.width / 2, canvas.height * 0.55, '#6ee7b7');
+                        unlocked = true;
+                    }
+                });
+                if (unlocked) this.saveMeta();
+            }
+
+            applyMetaBonuses() {
+                this.relicPower = { damage: 1, extraBall: 0, storm: false, time: 1, reveal: false, revive: 0, fireArea: 1, laserDepth: 0 };
+            }
+
+            togglePause() {
+                if (this.state === 'PLAYING') {
+                    this.state = 'PAUSED';
+                    document.getElementById('pause-screen').classList.remove('hidden');
+                } else if (this.state === 'PAUSED') {
+                    this.state = 'PLAYING';
+                    document.getElementById('pause-screen').classList.add('hidden');
+                }
+            }
+
+            returnToMainMenu(savePausedGame = false) {
+                if (savePausedGame && this.state === 'PAUSED') this.saveCurrentGame();
+                ['pause-screen', 'gameover-screen', 'upgrade-screen', 'route-screen', 'customization-screen', 'meta-screen'].forEach(id => {
+                    document.getElementById(id)?.classList.add('hidden');
+                });
+                document.getElementById('boss-hud').classList.add('hidden');
+                document.getElementById('start-screen').classList.remove('hidden');
+                this.state = 'START';
+                this.renderMeta();
+            }
+
+            setVolume(v) {
+                if (sfx.ctx) sfx.ctx.resume();
+                sfx.volume = Number(v) / 100;
+            }
+
+            addEffect(id, seconds = 12) {
+                this.effects = this.effects.filter(e => e.id !== id);
+                this.effects.push({ id, remaining: seconds * 1000 });
+                if (id === 'heal') {
+                    this.player.hp = Math.min(this.player.maxHp, this.player.hp + 25);
+                    this.effects = this.effects.filter(e => e.id !== id);
+                }
+                this.addFloatingText('BÔNUS: ' + id.toUpperCase(), canvas.width / 2, canvas.height * 0.65, '#facc15');
+            }
+
+            spawnPickup(br) {
+                if (this.pickupsSpawned >= 5 || Math.random() > 0.10) return;
+                const types = ['slow', 'wide', 'coins', 'heal', 'laser'];
+                this.pickups.push({ x: br.x + br.width / 2, y: br.y + br.height / 2, vy: 2.3, type: types[Math.floor(Math.random() * types.length)] });
+                this.pickupsSpawned++;
+            }
+
+            updatePickups(dt) {
+                for (let i = this.pickups.length - 1; i >= 0; i--) {
+                    const p = this.pickups[i];
+                    p.y += p.vy * dt / 16.6667;
+                    if (p.y > canvas.height) {
+                        this.pickups.splice(i, 1);
+                        continue;
+                    }
+                    if (this.player && p.y >= this.player.y - 12 && p.y <= this.player.y + this.player.height + 8 && p.x >= this.player.x - 12 && p.x <= this.player.x + this.player.width + 12) {
+                        if (p.type === 'coins') this.coins += 25 * (1 + this.player.coinBonusPercent);
+                        else this.addEffect(p.type);
+                        sfx.playPowerup();
+                        this.pickups.splice(i, 1);
+                    }
+                }
+                this.effects.forEach(e => e.remaining -= dt);
+                this.effects = this.effects.filter(e => e.remaining > 0);
+            }
+
+            hasEffect(id) { return this.effects.some(e => e.id === id); }
+
+            chooseRoute(type) {
+                this.roomType = type;
+                this.routeChoice = type;
+                document.getElementById('route-screen').classList.add('hidden');
+                this.showUpgradeScreen();
+            }
+
+            offerRoute() {
+                this.state = 'ROUTE';
+                document.getElementById('route-screen').classList.remove('hidden');
+            }
+
+            saveRecord() {
+                this.record.bestScore = Math.max(this.record.bestScore, this.score);
+                this.record.bestFloor = Math.max(this.record.bestFloor, this.floor);
+                this.record.runs++;
+                localStorage.setItem('breakoutRogueRecords', JSON.stringify(this.record));
+                document.getElementById('record-info').textContent = `Recorde: ${this.record.bestScore} pontos · Andar ${this.record.bestFloor} · ${this.record.runs} partidas`;
+            }
+
+            bindEvents() {
+                document.querySelectorAll('.paddle-color-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.paddle-color-btn').forEach(b => {
+                            b.classList.remove('border-white', 'scale-110', 'shadow-lg');
+                            b.classList.add('border-transparent');
+                        });
+                        const target = e.currentTarget;
+                        target.classList.remove('border-transparent');
+                        target.classList.add('border-white', 'scale-110', 'shadow-lg');
+                        this.selectedPaddleColor = target.dataset.color;
+                    });
+                });
+
+                document.querySelectorAll('.ball-color-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.ball-color-btn').forEach(b => {
+                            b.classList.remove('border-white', 'scale-110', 'shadow-lg');
+                            b.classList.add('border-transparent');
+                        });
+                        const target = e.currentTarget;
+                        target.classList.remove('border-transparent');
+                        target.classList.add('border-white', 'scale-110', 'shadow-lg');
+                        this.selectedBallColor = target.dataset.color;
+                    });
+                });
+
+                window.addEventListener('keydown', (e) => {
+                    this.keys[e.code] = true;
+                    if (['Space','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+                    if (e.code === 'Escape' || e.code === 'KeyP') { this.togglePause(); return; }
+                    if (['KeyA','KeyD','ArrowLeft','ArrowRight'].includes(e.code)) this.pointerActive = false;
+                    if (e.code === 'Space') {
+                        this.handlePrimaryAction();
+                    }
+                });
+
+                window.addEventListener('keyup', (e) => {
+                    this.keys[e.code] = false;
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    const rect = canvas.getBoundingClientRect();
+                    this.mouseX = (e.clientX - rect.left) * canvas.width / rect.width;
+                    this.pointerActive = true;
+                });
+
+                canvas.addEventListener('touchstart', e => {
+                    if (e.touches.length) {
+                        const rect = canvas.getBoundingClientRect();
+                        this.mouseX = (e.touches[0].clientX - rect.left) * canvas.width / rect.width;
+                        this.pointerActive = true;
+                        sfx.init();
+                        this.handlePrimaryAction();
+                    }
+                }, { passive: true });
+
+                canvas.addEventListener('touchmove', (e) => {
+                    if (e.touches.length > 0) {
+                        const rect = canvas.getBoundingClientRect();
+                        this.mouseX = (e.touches[0].clientX - rect.left) * canvas.width / rect.width;
+                        this.pointerActive = true;
+                    }
+                }, { passive: true });
+
+                canvas.addEventListener('click', () => {
+                    sfx.init();
+                    this.handlePrimaryAction();
+                });
+
+                document.getElementById('start-btn').addEventListener('click', () => {
+                    this.pendingMode = 'campaign';
+                    document.getElementById('selected-mode-label').textContent = 'MODO CAMPANHA';
+                    document.getElementById('start-screen').classList.add('hidden');
+                    document.getElementById('customization-screen').classList.remove('hidden');
+                });
+                document.getElementById('continue-btn').addEventListener('click', () => { sfx.init(); this.init(true, false); });
+                document.getElementById('infinite-btn').addEventListener('click', () => {
+                    this.pendingMode = 'infinite';
+                    document.getElementById('selected-mode-label').textContent = 'MODO INFINITO';
+                    document.getElementById('start-screen').classList.add('hidden');
+                    document.getElementById('customization-screen').classList.remove('hidden');
+                });
+                document.getElementById('customization-back-btn').addEventListener('click', () => {
+                    document.getElementById('customization-screen').classList.add('hidden');
+                    document.getElementById('start-screen').classList.remove('hidden');
+                });
+                document.getElementById('customization-start-btn').addEventListener('click', () => {
+                    sfx.init();
+                    const resetRelics = this.pendingMode === 'campaign';
+                    const hasProgress = Object.values(this.meta.campaignRelics).some(v => v > 0);
+                    if (resetRelics && hasProgress && !window.confirm('Iniciar uma nova campanha apagará os níveis das relíquias permanentes. Continuar?')) return;
+                    this.clearCurrentGame();
+                    this.init(false, resetRelics, this.pendingMode);
+                });
+                document.getElementById('close-meta-btn').addEventListener('click', () => document.getElementById('meta-screen').classList.add('hidden'));
+
+                document.getElementById('restart-btn').addEventListener('click', () => {
+                    sfx.init();
+                    this.init(true, false);
+                });
+
+                document.getElementById('pause-btn').addEventListener('click', () => this.togglePause());
+                document.getElementById('resume-btn').addEventListener('click', () => this.togglePause());
+                document.getElementById('pause-menu-btn').addEventListener('click', () => this.returnToMainMenu(true));
+                document.getElementById('gameover-menu-btn').addEventListener('click', () => this.returnToMainMenu(false));
+                document.getElementById('fullscreen-btn').addEventListener('click', () => document.fullscreenElement ? document.exitFullscreen() : document.getElementById('game-container').requestFullscreen());
+                document.getElementById('volume-slider').addEventListener('input', e => this.setVolume(e.target.value));
+                document.querySelectorAll('[data-route]').forEach(el => el.addEventListener('click', () => this.chooseRoute(el.dataset.route)));
+                document.getElementById('skip-upgrade-btn').addEventListener('click', () => {
+                    this.freeUpgradeAvailable = false;
+                    document.getElementById('upgrade-screen').classList.add('hidden');
+                    this.spawnLevel();
+                    this.state = 'PLAYING';
+                    this.saveCurrentGame();
+                });
+            }
+
+            init(continueCampaign = false, resetRelics = false, requestedMode = 'campaign') {
+                const savedRun = continueCampaign ? this.loadCurrentGame() : null;
+                if (resetRelics) {
+                    CAMPAIGN_RELICS.forEach(r => this.meta.campaignRelics[r.id] = 0);
+                    this.meta.campaign = { active: false, floor: 1, stage: 1 };
+                }
+                this.mode = savedRun?.mode || requestedMode;
+                this.wave = savedRun?.wave || 1;
+                this.floor = savedRun?.floor || (continueCampaign && this.meta.campaign.active ? this.meta.campaign.floor : 1);
+                this.stage = savedRun?.stage || (continueCampaign && this.meta.campaign.active ? this.meta.campaign.stage : 1);
+                this.score = 0;
+                this.coins = 100.00;
+                this.bricksDestroyed = 0;
+                this.upgradesLevels = {};
+                this.effects = [];
+                this.pickups = [];
+                this.pickupsSpawned = 0;
+                this.telegraphs = [];
+                this.combo = 0;
+                this.playerInvulnerable = 0;
+                this.elapsed = 0;
+                this.autoSaveTimer = 0;
+                this.brickFormationDirection = 1;
+                this.isBonusStage = false;
+                this.bonusSourceFloor = 0;
+                this.freeUpgradeAvailable = false;
+                this.bonusTransitioned = false;
+                document.getElementById('pause-screen').classList.add('hidden');
+                document.getElementById('route-screen').classList.add('hidden');
+                document.getElementById('meta-screen').classList.add('hidden');
+                document.getElementById('customization-screen').classList.add('hidden');
+                this.routeChoice = null;
+                this.roomType = 'combat';
+                this.pointerActive = false;
+
+                const baseWidth = 100;
+                this.player = {
+                    x: canvas.width / 2 - baseWidth / 2,
+                    y: canvas.height - 35,
+                    width: baseWidth,
+                    baseWidth: baseWidth,
+                    height: 14,
+                    color: this.selectedPaddleColor || '#06b6d4',
+                    hp: 100,
+                    maxHp: 100,
+                    fireball: false,
+                    fireballLevel: 1,
+                    piercingBall: false,
+                    piercingLevel: 1,
+                    maxPierces: 2,
+                    hasLaser: false,
+                    laserLevel: 1,
+                    laserCooldown: 0,
+                    laserFlash: 0,
+                    hasShield: false,
+                    shieldActive: false,
+                    shieldCharges: 0,
+                    critChance: 0.05,
+                    lifesteal: 0,
+                    coinBonusPercent: 0,
+                    ballRadiusMultiplier: 1,
+                    ballDamageMultiplier: 1
+                };
+
+                this.applyMetaBonuses();
+                CAMPAIGN_RELICS.forEach(r => r.apply(this, this.meta.campaignRelics[r.id] || 0));
+
+                document.getElementById('start-screen').classList.add('hidden');
+                document.getElementById('gameover-screen').classList.add('hidden');
+                document.getElementById('upgrade-screen').classList.add('hidden');
+
+                if (savedRun) {
+                    this.score = savedRun.score || 0;
+                    this.coins = savedRun.coins ?? 100;
+                    this.bricksDestroyed = savedRun.bricksDestroyed || 0;
+                    this.rowDropTimer = savedRun.rowDropTimer || this.rowDropInterval;
+                    this.player = savedRun.player || this.player;
+                    this.balls = savedRun.balls || [];
+                    this.bricks = savedRun.bricks || [];
+                    this.bricks.forEach(br => {
+                        if (br && br.type === 'multiplier') {
+                            br.type = 'normal'; br.color = '#06b6d4'; br.hp = Math.max(1, Number(br.hp) || 1); br.maxHp = br.hp;
+                        }
+                    });
+                    this.boss = savedRun.boss || null;
+                    this.pickups = savedRun.pickups || [];
+                    this.pickupsSpawned = Math.max(savedRun.pickupsSpawned || 0, this.pickups.length);
+                    this.projectiles = savedRun.projectiles || [];
+                    this.effects = savedRun.effects || [];
+                    this.upgradesLevels = savedRun.upgradesLevels || {};
+                    this.brickFormationDirection = savedRun.brickFormationDirection || 1;
+                    this.isBonusStage = !!savedRun.isBonusStage;
+                    this.bonusSourceFloor = savedRun.bonusSourceFloor || 0;
+                    this.freeUpgradeAvailable = !!savedRun.freeUpgradeAvailable;
+                    this.combo = savedRun.combo || 0;
+                    this.state = savedRun.gameState === 'UPGRADE' ? 'UPGRADE' : 'PLAYING';
+                    document.getElementById('boss-hud').classList.toggle('hidden', !this.boss);
+                    if (this.boss) {
+                        document.getElementById('boss-name').innerText = `CHEFE: ${this.boss.profile.name} · FASE ${this.boss.phase}`;
+                        const hpPercent = Math.max(0, this.boss.hp / this.boss.maxHp * 100);
+                        document.getElementById('boss-hp-bar').style.width = `${hpPercent}%`;
+                        document.getElementById('boss-hp-text').innerText = `${Math.ceil(hpPercent)}%`;
+                    }
+                    this.updateHUD();
+                    if (this.state === 'UPGRADE') this.showUpgradeScreen(this.freeUpgradeAvailable);
+                    return;
+                }
+
+                this.spawnLevel();
+                this.state = 'PLAYING';
+                this.meta.campaign = { active: true, floor: this.floor, stage: this.stage };
+                this.saveMeta();
+            }
+
+            spawnLevel() {
+                const difficulty = this.mode === 'infinite' ? 1 + Math.floor((this.wave - 1) / 2) : this.floor;
+                this.bricks = [];
+                this.particles = [];
+                this.floatingTexts = [];
+                this.projectiles = [];
+                this.telegraphs = [];
+                this.pickups = [];
+                this.pickupsSpawned = 0;
+                this.brickFormationDirection = 1;
+                this.boss = null;
+                document.getElementById('boss-hud').classList.add('hidden');
+
+                if (this.player) {
+                    this.player.hp = this.player.maxHp;
+                }
+
+                this.rowDropInterval = Math.max(8000, 60000 - ((difficulty - 1) * 10000)) / (this.relicPower.time || 1);
+                this.rowDropTimer = this.rowDropInterval;
+
+                Object.keys(this.upgradesLevels).forEach(id => {
+                    const upg = ALL_UPGRADES.find(u => u.id === id);
+                    const lvl = this.upgradesLevels[id];
+                    if (upg && lvl > 0) {
+                        if (id === 'lifesteal') { this.player.lifesteal = lvl; }
+                        else if (id === 'shield_bottom') { this.player.hasShield = true; }
+                        else upg.apply(this, lvl);
+                    }
+                });
+
+                if (!this.isBonusStage && this.mode !== 'infinite' && this.stage === levelsBeforeBoss(this.floor) + 1) {
+                    this.spawnBoss();
+                } else {
+                    const rowCount = this.isBonusStage ? this.bonusSourceFloor * 2 + 1 : (this.mode === 'infinite' ? Math.min(GRID_CELLS - 6, 4 + Math.ceil(this.wave / 2)) : Math.min(GRID_CELLS - 6, 3 + this.floor + this.stage));
+                    const bonusSpecialRow = this.isBonusStage ? Math.floor(Math.random() * rowCount) : -1;
+                    const bonusSpecialTypes = ['regenerative', 'invisible', 'teleporter', 'freezing', 'fortified', 'electric'];
+                    if (!this.isBonusStage && this.roomType === 'treasure') {
+                        this.coins += Math.round(30 * this.floor * (1 + this.player.coinBonusPercent));
+                        this.addFloatingText('TESOURO + MOEDAS!', canvas.width / 2, canvas.height / 2, '#facc15');
+                    }
+                    if (!this.isBonusStage && this.roomType === 'challenge') this.rowDropInterval = Math.max(10000, this.rowDropInterval * 0.65);
+                    if (!this.isBonusStage && this.roomType === 'event') this.addEffect('wide', 20);
+
+                    const cols = 10;
+                    const brickWidth = (canvas.width - 40) / cols;
+                    const brickHeight = CELL_SIZE * 0.55;
+
+                    let turretsCount = 0;
+                    const maxTurrets = difficulty;
+
+                    let explosiveCount = 0;
+                    const maxExplosive = difficulty * 2;
+                    for (let r = 0; r < rowCount; r++) {
+                        for (let c = 0; c < cols; c++) {
+                            const isSpecialBonusRow = this.isBonusStage && r === bonusSpecialRow;
+                            if (!isSpecialBonusRow && Math.random() < 0.12) continue;
+
+                            let type = 'normal';
+                            let hp = 1;
+                            let color = '#06b6d4';
+
+                            const rand = Math.random();
+                            if (isSpecialBonusRow) {
+                                type = bonusSpecialTypes[Math.floor(Math.random() * bonusSpecialTypes.length)];
+                                color = EXTRA_BRICK_TYPES[type].color;
+                                hp = EXTRA_BRICK_TYPES[type].hp + Math.floor((difficulty - 1) / 4);
+                            } else if (difficulty >= 3 && rand < 0.05) {
+                                type = 'unbreakable';
+                                color = EXTRA_BRICK_TYPES.unbreakable.color;
+                                hp = Infinity;
+                            } else if (rand < 0.15 && explosiveCount < maxExplosive) {
+                                type = 'explosive';
+                                color = '#f97316';
+                                explosiveCount++;
+                            } else if (rand < 0.30 && turretsCount < maxTurrets) {
+                                type = 'turret';
+                                color = '#ef4444';
+                                turretsCount++;
+                            } else if (rand < 0.50) {
+                                type = 'armored';
+                                color = '#a855f7';
+                                hp = Math.min(difficulty, Math.floor(Math.random() * difficulty) + 1);
+                            } else if (difficulty >= 2 && rand < 0.88) {
+                                const unlocked = Object.keys(EXTRA_BRICK_TYPES).slice(0, Math.min(8, difficulty + 1));
+                                type = unlocked[Math.floor(Math.random() * unlocked.length)];
+                                color = type === 'normal' ? '#06b6d4' : EXTRA_BRICK_TYPES[type].color;
+                                hp = type === 'normal' ? 1 : (type === 'unbreakable' ? Infinity : EXTRA_BRICK_TYPES[type].hp + Math.floor((difficulty - 1) / 4));
+                            }
+
+                            if (this.mode === 'campaign' && this.floor >= 4 && Number.isFinite(hp)) hp *= 1.5;
+
+                            this.bricks.push({
+                                x: 20 + c * brickWidth,
+                                y: CELL_SIZE + r * CELL_SIZE,
+                                width: brickWidth - 4,
+                                height: brickHeight,
+                                type: type,
+                                hp: hp,
+                                maxHp: hp,
+                                color: color,
+                                shootTimer: Math.random() * 200,
+                                regenTimer: 0,
+                                phase: Math.random() * Math.PI * 2,
+                                visible: true
+                            });
+                        }
+                    }
+
+                    this.balls = [];
+                    this.spawnBall();
+                }
+
+                if (this.relicPower.extraBall && this.balls.length === 1) {
+                    const b = this.balls[0];
+                    this.spawnBall(b.x + 8, b.y, 2.5, -b.speed, b.radius);
+                    this.balls[this.balls.length - 1].attached = true;
+                }
+                this.updateHUD();
+            }
+
+            updateBrickFormation(dt) {
+                if (this.mode !== 'campaign' || this.floor < 4 || this.boss || this.bricks.length === 0) return;
+                const activeBricks = this.bricks.filter(br => br && (br.type === 'unbreakable' || br.hp > 0));
+                if (activeBricks.length === 0) return;
+                const formationSpeed = this.floor === 5 ? 2.1 : 0.7;
+                const step = formationSpeed * this.brickFormationDirection * ((dt || 16.6667) / 16.6667);
+                const left = Math.min(...activeBricks.map(br => br.x));
+                const right = Math.max(...activeBricks.map(br => br.x + br.width));
+                if ((step < 0 && left + step <= 4) || (step > 0 && right + step >= canvas.width - 4)) {
+                    this.brickFormationDirection *= -1;
+                }
+                const movement = formationSpeed * this.brickFormationDirection * ((dt || 16.6667) / 16.6667);
+                activeBricks.forEach(br => { br.x += movement; });
+            }
+
+            handlePrimaryAction() {
+                if (this.state !== 'PLAYING') return;
+
+                this.balls.forEach(b => {
+                    if (b && b.attached) {
+                        b.attached = false;
+                        b.vy = -b.speed;
+                        b.vx = (Math.random() - 0.5) * 4;
+                    }
+                });
+            }
+
+            fireLaser() {
+                if (!this.player) return;
+                this.player.laserCooldown = Math.max(10, 40 - (this.player.laserLevel * 8));
+                this.player.laserFlash = 6;
+                sfx.playLaser();
+                
+                const pierce = (this.player.hasLaser ? this.player.laserLevel : 1) + (this.relicPower.laserDepth || 0);
+
+                this.projectiles.push({
+                    x: this.player.x + 10,
+                    y: this.player.y - 14,
+                    vy: -12,
+                    isPlayer: true,
+                    pierce: pierce
+                });
+
+                this.projectiles.push({
+                    x: this.player.x + this.player.width - 10,
+                    y: this.player.y - 14,
+                    vy: -12,
+                    isPlayer: true,
+                    pierce: pierce
+                });
+            }
+
+            spawnBall(x, y, vx, vy, radius) {
+                const baseRadius = 7 * (this.player ? this.player.ballRadiusMultiplier : 1);
+                const speed = 7;
+                this.balls.push({
+                    x: x !== undefined ? x : (this.player ? this.player.x + this.player.width / 2 : canvas.width / 2),
+                    y: y !== undefined ? y : (this.player ? this.player.y - baseRadius : canvas.height - 50),
+                    vx: vx !== undefined ? vx : 0,
+                    vy: vy !== undefined ? vy : -speed,
+                    speed: speed,
+                    radius: radius !== undefined ? radius : baseRadius,
+                    attached: x === undefined && y === undefined,
+                    pierceRemaining: 0
+                });
+            }
+
+            spawnBoss() {
+                const profile = BOSS_PROFILES[(this.floor - 1) % BOSS_PROFILES.length];
+                document.getElementById('boss-hud').classList.remove('hidden');
+                document.getElementById('boss-name').innerText = `CHEFE: ${profile.name} · FASE 1/${profile.phases}`;
+                document.getElementById('boss-hp-bar').style.width = '100%';
+                document.getElementById('boss-hp-text').innerText = '100%';
+
+                const bossHp = (profile.hp + (this.floor * profile.hpScale)) * (profile.hpMultiplier || 1);
+                const bossWidth = Math.min(320, canvas.width - 40);
+                this.boss = {
+                    x: canvas.width / 2 - (bossWidth / 2),
+                    y: 60,
+                    width: bossWidth,
+                    height: 70,
+                    hp: bossHp,
+                    maxHp: bossHp,
+                    profile: profile,
+                    color: profile.color,
+                    vx: profile.speed + (this.floor * 0.18),
+                    shootTimer: 0,
+                    shootInterval: Math.max(48, profile.interval - this.floor * 3) / (this.relicPower.time || 1),
+                    specialTimer: 150,
+                    invulnerable: 0,
+                    phase: 1
+                };
+
+                this.balls = [];
+                this.spawnBall();
+            }
+
+            showUpgradeScreen(freeUpgrade = false) {
+                this.state = 'UPGRADE';
+                this.freeUpgradeAvailable = freeUpgrade;
+                const screen = document.getElementById('upgrade-screen');
+                const container = document.getElementById('cards-container');
+                const skipButton = document.getElementById('skip-upgrade-btn');
+                document.getElementById('shop-title').innerText = freeUpgrade ? 'ESCOLHA GRATUITA' : 'LOJA DE UPGRADES';
+                document.getElementById('shop-balance-row').classList.toggle('hidden', freeUpgrade);
+                document.getElementById('shop-coins-display').innerText = this.coins.toFixed(2);
+                container.innerHTML = '';
+
+                const available = ALL_UPGRADES.filter(u => {
+                    const currentLvl = this.upgradesLevels[u.id] || 0;
+                    const progression = this.mode === 'infinite' ? 1 + Math.floor(this.wave / 3) : this.floor;
+                    return progression >= u.minFloor && currentLvl < u.maxLevel;
+                });
+
+                const shuffled = [...available].sort(() => 0.5 - Math.random());
+                const choices = shuffled.slice(0, 3);
+
+                choices.forEach(upg => {
+                    const currentLvl = this.upgradesLevels[upg.id] || 0;
+                    const nextLvl = currentLvl + 1;
+                    const cost = freeUpgrade ? 0 : upg.getCost(nextLvl);
+                    const canAfford = freeUpgrade || this.coins >= cost;
+                    const rarity = nextLvl >= 4 ? 'LENDÁRIO' : nextLvl === 3 ? 'ÉPICO' : nextLvl === 2 ? 'RARO' : 'COMUM';
+
+                    const card = document.createElement('div');
+                    card.className = `card-hover relative bg-slate-900/90 border ${canAfford ? 'border-cyan-500/50 hover:border-cyan-400' : 'border-slate-800 opacity-60'} p-4 rounded-xl flex flex-col justify-between shadow-xl backdrop-blur`;
+                    
+                    card.innerHTML = `
+                        <div>
+                            <div class="flex items-center justify-between mb-3">
+                                <div class="w-10 h-10 rounded-lg bg-gradient-to-br ${upg.color} flex items-center justify-center text-white shadow-md">
+                                    <i data-lucide="${upg.icon}" class="w-5 h-5"></i>
+                                </div>
+                                <span class="text-xs font-orbitron font-bold text-slate-400 bg-slate-950 px-2 py-1 rounded border border-slate-800">NV ${nextLvl}/${upg.maxLevel} · ${rarity}</span>
+                            </div>
+                            <h3 class="font-orbitron font-bold text-slate-100 text-sm mb-1">${upg.title}</h3>
+                            <p class="text-xs text-slate-400 leading-relaxed mb-4">${upg.getDesc(nextLvl)}</p>
+                        </div>
+                        <button ${canAfford ? '' : 'disabled'} class="buy-btn w-full py-2 px-3 rounded-lg font-orbitron font-bold text-xs flex items-center justify-center gap-1.5 transition-all ${canAfford ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20 cursor-pointer' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}">
+                            <i data-lucide="coins" class="w-3.5 h-3.5"></i> ${freeUpgrade ? 'GRÁTIS' : cost.toFixed(2) + ' MOEDAS'}
+                        </button>
+                    `;
+
+                    if (canAfford) {
+                        card.querySelector('.buy-btn').addEventListener('click', () => {
+                            if (!freeUpgrade) this.coins -= cost;
+                            this.freeUpgradeAvailable = false;
+                            upg.apply(this, nextLvl);
+                            if (nextLvl >= upg.maxLevel && !this.meta.stats.maxedUpgrades.includes(upg.id)) {
+                                this.meta.stats.maxedUpgrades.push(upg.id);
+                                this.checkAchievements();
+                            }
+                            sfx.playPowerup();
+                            document.getElementById('upgrade-screen').classList.add('hidden');
+                            this.spawnLevel();
+                            this.state = 'PLAYING';
+                            this.saveCurrentGame();
+                        });
+                    }
+
+                    container.appendChild(card);
+                });
+
+                skipButton.classList.toggle('hidden', freeUpgrade && choices.length > 0);
+                skipButton.innerHTML = choices.length === 0 && freeUpgrade
+                    ? '<i data-lucide="arrow-right-circle" class="w-4 h-4 text-cyan-400"></i> Todas as melhorias estão no máximo / Continuar'
+                    : '<i data-lucide="arrow-right-circle" class="w-4 h-4 text-cyan-400"></i> Não Comprar Nada / Próximo Andar';
+                lucide.createIcons();
+                screen.classList.remove('hidden');
+            }
+
+            dropRows() {
+                this.addShake(8, 10);
+                sfx.playHit(180, 'sawtooth', 0.15);
+                this.addFloatingText('FILEIRAS AVANÇARAM!', canvas.width / 2, canvas.height / 2, '#ef4444');
+
+                this.bricks.forEach(br => {
+                    if (br) br.y += CELL_SIZE;
+                });
+
+                if (this.boss) {
+                    this.boss.y += CELL_SIZE;
+                }
+
+                if (this.player) {
+                    const reached = this.bricks.some(br => br && br.y + br.height >= this.player.y - 10);
+                    if (reached || (this.boss && this.boss.y + this.boss.height >= this.player.y - 10)) {
+                        if (this.isBonusStage) {
+                            this.finishBonusStage(false);
+                            return;
+                        }
+                        this.player.hp -= 25;
+                        this.addFloatingText('-25 HP (AVANÇO!)', this.player.x + this.player.width / 2, this.player.y - 15, '#f43f5e');
+                        if (this.player.hp <= 0) {
+                            this.gameOver();
+                        }
+                    }
+                }
+            }
+
+            hurtPlayer(amount, label = null) {
+                if (!this.player || this.playerInvulnerable > 0) return false;
+                this.player.hp -= amount;
+                this.playerInvulnerable = 75;
+                this.addShake(6, 7);
+                this.addFloatingText(label || `-${amount} HP`, this.player.x + this.player.width / 2, this.player.y - 15, '#f43f5e');
+                if (this.player.hp <= 0) this.gameOver();
+                return true;
+            }
+
+            scheduleTelegraph(kind, x, y, delay = 55, data = {}) {
+                this.telegraphs.push({ kind, x, y, delay, maxDelay: delay, data });
+            }
+
+            updateTelegraphs() {
+                for (let i = this.telegraphs.length - 1; i >= 0; i--) {
+                    const t = this.telegraphs[i];
+                    t.delay--;
+                    if (t.delay > 0) continue;
+                    const projectileSpeed = t.data.speedScale || 1;
+                    if (t.kind === 'beam') {
+                        this.projectiles.push({ x: t.x, y: t.y, vx: 0, vy: 8 * projectileSpeed, isPlayer: false, damage: 14, beam: true });
+                    } else if (t.kind === 'burst') {
+                        const count = t.data.count || 7;
+                        for (let n = 0; n < count; n++) {
+                            const a = Math.PI * (0.12 + 0.76 * n / Math.max(1, count - 1));
+                            this.projectiles.push({ x: t.x, y: t.y, vx: Math.cos(a) * 5 * projectileSpeed, vy: Math.sin(a) * 5 * projectileSpeed, isPlayer: false, damage: 10 });
+                        }
+                    } else if (t.kind === 'mine') {
+                        this.projectiles.push({ x: t.x, y: t.y, vx: 0, vy: 2.2 * projectileSpeed, isPlayer: false, damage: 12, mine: true, life: 300 });
+                    } else if (t.kind === 'gravity') {
+                        this.effects.push({ id: 'gravity', remaining: 3200 });
+                    }
+                    this.telegraphs.splice(i, 1);
+                }
+            }
+
+            updateBoss() {
+                const b = this.boss;
+                if (!b) return;
+                b.invulnerable = Math.max(0, b.invulnerable - 1);
+                b.x += b.vx * (this.hasEffect('slow') ? 0.5 : 1);
+                if (b.x <= 10 || b.x + b.width >= canvas.width - 10) b.vx *= -1;
+                b.shootTimer++;
+                b.specialTimer--;
+                if (b.shootTimer >= b.shootInterval) {
+                    b.shootTimer = 0;
+                    const cx = b.x + b.width / 2;
+                    if (b.profile.id === 'titan') {
+                        this.scheduleTelegraph('beam', this.player.x + this.player.width / 2, b.y + b.height, 60 - b.phase * 8);
+                        if (b.phase >= 2) this.scheduleTelegraph('beam', Math.random() * (canvas.width - 80) + 40, b.y + b.height, 52);
+                    }
+                    else if (b.profile.id === 'prism') this.scheduleTelegraph('burst', cx, b.y + b.height, 46 - b.phase * 5, { count: Math.min(4, 2 + b.phase) });
+                    else if (b.profile.id === 'hive') {
+                        const mines = 2 + b.phase * 2;
+                        for (let k = 0; k < mines; k++) this.scheduleTelegraph('mine', b.x + (k + 1) * b.width / (mines + 1), b.y + b.height, 40 + k * 7);
+                    } else if (b.profile.id === 'gravity') {
+                        this.scheduleTelegraph('gravity', cx, b.y + b.height, 65 - b.phase * 8);
+                        if (b.phase >= 2) this.scheduleTelegraph('burst', cx, b.y + b.height, 52, { count: 10 });
+                    }
+                    else {
+                        this.scheduleTelegraph('beam', Math.random() * (canvas.width - 40) + 20, b.y + b.height, 42 - b.phase * 5, { speedScale: 0.6 });
+                        if (b.phase >= 2) this.scheduleTelegraph('burst', cx, b.y + b.height, 48, { count: 7 + b.phase * 3, speedScale: 0.6 });
+                        if (b.phase >= 3) for (let k = 0; k < 4; k++) this.scheduleTelegraph('mine', b.x + (k + 1) * b.width / 5, b.y + b.height, 35 + k * 8, { speedScale: 0.6 });
+                    }
+                }
+                if (b.specialTimer <= 0) {
+                    b.specialTimer = Math.max(120, 250 - this.floor * 8);
+                    b.invulnerable = 55;
+                    this.addFloatingText('BARREIRA TEMPORÁRIA', b.x + b.width / 2, b.y - 8, '#f8fafc');
+                }
+            }
+
+            update(dt) {
+                if (this.state !== 'PLAYING') return;
+
+                this.elapsed += dt || 16.6667;
+                if (this.playerInvulnerable > 0) this.playerInvulnerable--;
+                this.autoSaveTimer += dt || 16.6667;
+                if (this.autoSaveTimer >= 5000) { this.autoSaveTimer = 0; this.saveCurrentGame(); }
+
+                if (this.shakeTime > 0) this.shakeTime--;
+                if (this.player && this.player.laserCooldown > 0) this.player.laserCooldown--;
+                if (this.player && this.player.laserFlash > 0) this.player.laserFlash--;
+                if (this.multiballCooldown > 0) this.multiballCooldown--;
+
+                const hasActiveBall = this.balls.some(ball => ball && !ball.attached);
+                if (this.player && hasActiveBall && (this.player.hasLaser || this.hasEffect('laser')) && this.player.laserCooldown <= 0) {
+                    this.fireLaser();
+                }
+
+                if (dt) {
+                    this.rowDropTimer -= dt;
+                    if (this.rowDropTimer <= 0) {
+                        this.dropRows();
+                        if (this.bonusTransitioned) { this.bonusTransitioned = false; return; }
+                        this.rowDropTimer = this.rowDropInterval;
+                    }
+                }
+
+                if (this.player) {
+                    const speed = 8;
+                    if (this.keys['KeyA'] || this.keys['ArrowLeft']) {
+                        this.player.x -= speed;
+                    }
+                    if (this.keys['KeyD'] || this.keys['ArrowRight']) {
+                        this.player.x += speed;
+                    }
+
+                    if (this.pointerActive) {
+                        this.player.x = this.mouseX - this.player.width / 2;
+                    }
+
+                    const baseLevel = this.upgradesLevels.paddle_size || 1;
+                    this.player.width = this.player.baseWidth * (1 + (baseLevel - 1) * 0.25) * (this.hasEffect('wide') ? 1.35 : 1);
+                    this.player.x = Math.max(5, Math.min(canvas.width - this.player.width - 5, this.player.x));
+                }
+
+                this.updateBrickFormation(dt);
+                this.updatePickups(dt);
+
+                this.bricks.forEach(br => {
+                    if (!br) return;
+                    if (br.type === 'regenerative' && br.hp < br.maxHp) {
+                        br.regenTimer++;
+                        if (br.regenTimer > 300) { br.hp++; br.regenTimer = 0; }
+                    }
+                    if (br.type === 'invisible') br.visible = Math.sin(this.elapsed / 650 + br.phase) > -0.25;
+                });
+
+                this.bricks.forEach(br => {
+                    if (!br || br.type !== 'turret') return;
+                    br.shootTimer++;
+                    if (br.shootTimer >= 180) {
+                        br.shootTimer = 0;
+                        this.projectiles.push({
+                            x: br.x + br.width / 2,
+                            y: br.y + br.height,
+                            vy: 4,
+                            isPlayer: false
+                        });
+                    }
+                });
+
+                this.updateBoss();
+                this.updateTelegraphs();
+
+                for (let i = this.projectiles.length - 1; i >= 0; i--) {
+                    const p = this.projectiles[i];
+                    if (!p) continue;
+
+                    if (p.vx !== undefined) {
+                        p.x += p.vx;
+                    }
+                    p.y += p.vy * (!p.isPlayer && this.hasEffect('slow') ? 0.5 : 1);
+                    if (p.mine) {
+                        p.life--;
+                        if (p.life <= 0) { this.projectiles.splice(i, 1); continue; }
+                    }
+
+                    if (!p.isPlayer && p.bouncesLeft && p.bouncesLeft > 0) {
+                        if (p.x <= 5 || p.x >= canvas.width - 5) {
+                            p.vx = -p.vx;
+                            p.x = Math.max(5, Math.min(canvas.width - 5, p.x));
+                            p.bouncesLeft--;
+                            sfx.playHit(200, 'square', 0.04);
+                        }
+                    }
+
+                    if (p.y < 0 || p.y > canvas.height) {
+                        this.projectiles.splice(i, 1);
+                        continue;
+                    }
+
+                    if (p.isPlayer) {
+                        let hit = false;
+                        for (let j = this.bricks.length - 1; j >= 0; j--) {
+                            const br = this.bricks[j];
+                            if (br && p.x >= br.x && p.x <= br.x + br.width && p.y >= br.y && p.y <= br.y + br.height) {
+                                this.damageBrick(br, 1, false);
+                                if (br.type === 'unbreakable') {
+                                    hit = true;
+                                } else {
+                                    p.pierce = (p.pierce || 1) - 1;
+                                    if (p.pierce <= 0) hit = true;
+                                }
+                                break;
+                            }
+                        }
+                        if (!hit && this.boss && p.x >= this.boss.x && p.x <= this.boss.x + this.boss.width && p.y >= this.boss.y && p.y <= this.boss.y + this.boss.height) {
+                            sfx.playHit(150, 'square', 0.05);
+                            this.addFloatingText('IMUNE AO LASER', p.x, p.y, '#94a3b8');
+                            hit = true;
+                        }
+                        if (hit) {
+                            this.projectiles.splice(i, 1);
+                            continue;
+                        }
+                    } else {
+                        const projectileRadius = p.mine ? 10 : (p.beam ? 9 : 6);
+                        const interceptedByBall = this.balls.some(ball => ball && !ball.attached && Math.hypot(ball.x - p.x, ball.y - p.y) <= ball.radius + projectileRadius);
+                        if (interceptedByBall) {
+                            this.createExplosion(p.x, p.y, '#67e8f9', 5);
+                            sfx.playHit(520, 'sine', 0.05);
+                            this.projectiles.splice(i, 1);
+                            continue;
+                        }
+                        if (this.player && 
+                            p.x >= this.player.x && p.x <= this.player.x + this.player.width &&
+                            p.y >= this.player.y && p.y <= this.player.y + this.player.height) {
+                            
+                            const hitDamage = p.damage || 8;
+                            sfx.playHit(150, 'sawtooth', 0.1);
+                            this.hurtPlayer(hitDamage);
+                            this.projectiles.splice(i, 1);
+                        }
+                    }
+                }
+
+                for (let i = this.balls.length - 1; i >= 0; i--) {
+                    const b = this.balls[i];
+                    if (!b) continue;
+
+                    if (b.attached && this.player) {
+                        b.x = this.player.x + this.player.width / 2;
+                        b.y = this.player.y - b.radius;
+                        continue;
+                    }
+
+                    if (this.player && this.player.fireball && Math.random() < 0.4) {
+                        this.particles.push({
+                            x: b.x + (Math.random() - 0.5) * 6,
+                            y: b.y + (Math.random() - 0.5) * 6,
+                            vx: (Math.random() - 0.5) * 1.5,
+                            vy: (Math.random() - 0.5) * 1.5,
+                            size: Math.random() * 3 + 2,
+                            color: Math.random() < 0.5 ? '#f97316' : '#ef4444',
+                            life: 0.6
+                        });
+                    }
+
+                    const gravityPull = this.hasEffect('gravity') ? 0.045 : 0;
+                    if (gravityPull && this.boss) b.vx += (this.boss.x + this.boss.width / 2 - b.x) * gravityPull / 100;
+                    const frozenFactor = b.frozenUntil && b.frozenUntil > this.elapsed ? 0.55 : 1;
+                    b.x += b.vx * frozenFactor;
+                    b.y += b.vy * frozenFactor;
+
+                    const speedMultiplier = 1.03;
+                    const maxSpeed = 16;
+
+                    if (b.x - b.radius <= 0) {
+                        b.x = b.radius;
+                        b.vx = -b.vx * speedMultiplier;
+                        b.vy = b.vy * speedMultiplier;
+                        if (Math.hypot(b.vx, b.vy) > maxSpeed) {
+                            const angle = Math.atan2(b.vy, b.vx);
+                            b.vx = Math.cos(angle) * maxSpeed;
+                            b.vy = Math.sin(angle) * maxSpeed;
+                        }
+                        sfx.playHit(300, 'sine', 0.05);
+                    }
+                    if (b.x + b.radius >= canvas.width) {
+                        b.x = canvas.width - b.radius;
+                        b.vx = -b.vx * speedMultiplier;
+                        b.vy = b.vy * speedMultiplier;
+                        if (Math.hypot(b.vx, b.vy) > maxSpeed) {
+                            const angle = Math.atan2(b.vy, b.vx);
+                            b.vx = Math.cos(angle) * maxSpeed;
+                            b.vy = Math.sin(angle) * maxSpeed;
+                        }
+                        sfx.playHit(300, 'sine', 0.05);
+                    }
+                    if (b.y - b.radius <= 0) {
+                        b.y = b.radius;
+                        b.vy = -b.vy * speedMultiplier;
+                        b.vx = b.vx * speedMultiplier;
+                        if (Math.hypot(b.vx, b.vy) > maxSpeed) {
+                            const angle = Math.atan2(b.vy, b.vx);
+                            b.vx = Math.cos(angle) * maxSpeed;
+                            b.vy = Math.sin(angle) * maxSpeed;
+                        }
+                        sfx.playHit(350, 'sine', 0.05);
+                    }
+
+                    if (b.y + b.radius >= canvas.height - 5) {
+                        if (this.player && this.player.shieldActive && this.player.shieldCharges > 0) {
+                            b.vy = -Math.abs(b.vy);
+                            b.y = canvas.height - 10;
+                            this.player.shieldCharges--;
+                            if (this.player.lifesteal > 0) this.player.hp = Math.min(this.player.maxHp, this.player.hp + 5 * this.player.lifesteal);
+                            if (this.player.shieldCharges <= 0) {
+                                this.player.shieldActive = false;
+                            }
+                            this.addShake(8, 10);
+                            sfx.playHit(600, 'square', 0.15);
+                            this.addFloatingText('ESCUDO USADO', canvas.width / 2, canvas.height - 30, '#06b6d4');
+                        } else {
+                            this.balls.splice(i, 1);
+                            continue;
+                        }
+                    }
+
+                    if (this.player && b.vy > 0 && 
+                        b.x >= this.player.x - b.radius && 
+                        b.x <= this.player.x + this.player.width + b.radius &&
+                        b.y + b.radius >= this.player.y &&
+                        b.y - b.radius <= this.player.y + this.player.height) {
+                        
+                        b.vy = -Math.abs(b.vy);
+                        const hitPoint = (b.x - (this.player.x + this.player.width / 2)) / (this.player.width / 2);
+                        b.vx = hitPoint * 6;
+                        if (this.player.multiballLevel && !this.multiballCooldown && this.balls.length < 12) {
+                            const count = Math.min(this.player.multiballLevel, 12 - this.balls.length);
+                            for (let k = 0; k < count; k++) this.spawnBall(b.x, b.y, b.vx + (k % 2 ? 3 : -3), -Math.abs(b.vy), b.radius);
+                            this.multiballCooldown = 720;
+                        }
+                        if (this.player.piercingBall) {
+                            b.pierceRemaining = this.player.maxPierces;
+                        }
+                        sfx.playHit(450, 'triangle', 0.08);
+                    }
+
+                    if (this.boss && b.x + b.radius > this.boss.x && b.x - b.radius < this.boss.x + this.boss.width &&
+                        b.y + b.radius > this.boss.y && b.y - b.radius < this.boss.y + this.boss.height) {
+                        
+                        const prevX = b.x - b.vx;
+                        const prevY = b.y - b.vy;
+                        
+                        const margin = 15;
+                        const isSideHit = (prevX <= this.boss.x + margin || prevX >= this.boss.x + this.boss.width - margin) &&
+                                          (prevY >= this.boss.y && prevY <= this.boss.y + this.boss.height);
+
+                        if (isSideHit) {
+                            b.x = b.vx > 0 ? this.boss.x - b.radius - 1 : this.boss.x + this.boss.width + b.radius + 1;
+                            b.vx *= -1;
+                            sfx.playHit(180, 'square', 0.08);
+                            this.addFloatingText('BLINDADO!', b.x, b.y, '#94a3b8');
+                        } else {
+                            if (prevX <= this.boss.x || prevX >= this.boss.x + this.boss.width) {
+                                b.vx *= -1;
+                            } else {
+                                b.vy *= -1;
+                            }
+
+                            const isCrit = this.player && Math.random() < this.player.critChance;
+                            const ballDamageMultiplier = this.player ? (this.player.ballDamageMultiplier || 1) : 1;
+                            this.damageBoss((isCrit ? 15 : 5) * ballDamageMultiplier, isCrit);
+                        }
+                    }
+
+                    for (let j = this.bricks.length - 1; j >= 0; j--) {
+                        const br = this.bricks[j];
+                        if (!br) continue;
+
+                        if (b.x + b.radius > br.x &&
+                            b.x - b.radius < br.x + br.width &&
+                            b.y + b.radius > br.y &&
+                            b.y - b.radius < br.y + br.height) {
+
+                            let shouldBounce = true;
+
+                            if (this.player && this.player.piercingBall) {
+                                if (b.pierceRemaining === undefined) b.pierceRemaining = this.player.maxPierces;
+                                if (b.pierceRemaining > 0) {
+                                    shouldBounce = false;
+                                    b.pierceRemaining--;
+                                }
+                            }
+
+                            if (shouldBounce) {
+                                const prevX = b.x - b.vx;
+                                if (prevX <= br.x || prevX >= br.x + br.width) {
+                                    b.vx *= -1;
+                                } else {
+                                    b.vy *= -1;
+                                }
+                            }
+
+                            const isCrit = this.player && Math.random() < this.player.critChance;
+                            const ballDamageMultiplier = this.player ? (this.player.ballDamageMultiplier || 1) : 1;
+                            const dmg = (isCrit ? 3 : 1) * ballDamageMultiplier;
+
+                            if (br.type === 'freezing') {
+                                b.frozenUntil = this.elapsed + 2400;
+                                this.addFloatingText('CONGELADA!', b.x, b.y, '#7dd3fc');
+                            } else if (br.type === 'teleporter') {
+                                const exits = this.bricks.filter(x => x !== br && x.type === 'teleporter');
+                                const exit = exits[Math.floor(Math.random() * exits.length)];
+                                if (exit) { b.x = exit.x + exit.width / 2; b.y = exit.y + exit.height + b.radius + 2; }
+                            }
+
+                            if (this.player && this.player.fireball) {
+                                const aoeRadius = (60 + ((this.player.fireballLevel || 1) - 1) * 30) * (this.relicPower.fireArea || 1);
+                                this.createExplosion(br.x + br.width / 2, br.y + br.height / 2, '#f97316', 15);
+                                this.damageBrick(br, dmg, isCrit, true);
+                                this.damageArea(br.x + br.width / 2, br.y + br.height / 2, aoeRadius, ballDamageMultiplier);
+                            } else {
+                                this.damageBrick(br, dmg, isCrit);
+                            }
+
+                            if (!shouldBounce) {
+                                continue;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (this.balls.length === 0) {
+                    if (this.isBonusStage) {
+                        if (this.bricks.some(br => br && br.type !== 'unbreakable')) {
+                            this.finishBonusStage(false);
+                            this.bonusTransitioned = false;
+                            return;
+                        }
+                    } else {
+                        if (this.combo > 0) this.addFloatingText(`COMBO ENCERRADO: ${this.combo}`, canvas.width / 2, canvas.height * 0.7, '#f97316');
+                        this.combo = 0;
+                        if (this.player) {
+                            this.player.hp -= 20;
+                            if (this.player.hp <= 0) {
+                                this.gameOver();
+                            } else {
+                                this.spawnBall();
+                            }
+                        }
+                    }
+                }
+
+                if (!this.bricks.some(br => br && br.type !== 'unbreakable') && !this.boss) {
+                    this.bricks = [];
+                    this.roomCleared();
+                }
+
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const pt = this.particles[i];
+                    if (!pt) continue;
+                    pt.x += pt.vx;
+                    pt.y += pt.vy;
+                    pt.life -= 0.03;
+                    if (pt.life <= 0) this.particles.splice(i, 1);
+                }
+
+                for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
+                    const ft = this.floatingTexts[i];
+                    if (!ft) continue;
+                    ft.y -= 0.8;
+                    ft.life -= 0.02;
+                    if (ft.life <= 0) this.floatingTexts.splice(i, 1);
+                }
+
+                this.updateHUD();
+            }
+
+            damageBrick(br, dmg, isCrit, isAoe = false) {
+                if (!br) return;
+                if (br.type === 'unbreakable') {
+                    if (!isAoe) this.addFloatingText('INQUEBRÁVEL', br.x + br.width / 2, br.y, '#94a3b8');
+                    return;
+                }
+                if (br.hp <= 0) return;
+
+                dmg = Math.max(1, dmg * (this.relicPower.damage || 1));
+                if (br.type === 'fortified') dmg = Math.min(1, dmg);
+                if (br.type === 'regenerative') br.regenTimer = 0;
+
+                br.hp -= dmg;
+                this.addFloatingText(isCrit ? `CRIT! -${dmg}` : `-${dmg}`, br.x + br.width / 2, br.y, isCrit ? '#ec4899' : '#ffffff');
+
+                if (br.hp <= 0) {
+                    this.combo++;
+                    this.meta.stats.totalBricks++;
+                    this.meta.stats.bestCombo = Math.max(this.meta.stats.bestCombo, this.combo);
+                    const comboMultiplier = 1 + Math.min(2, Math.floor(this.combo / 5) * 0.25);
+                    this.bricksDestroyed++;
+                    this.score += Math.round((this.roomType === 'challenge' ? 75 : 50) * comboMultiplier);
+                    if (this.combo >= 5 && this.combo % 5 === 0) this.addFloatingText(`COMBO x${this.combo} · +${Math.round((comboMultiplier - 1) * 100)}%`, br.x + br.width / 2, br.y - 8, '#facc15');
+                    if (this.relicPower.storm && this.combo % 10 === 0) {
+                        [...this.bricks].slice(0, 5).forEach(x => this.damageBrick(x, 1, false, true));
+                        this.addFloatingText('TEMPESTADE!', canvas.width / 2, canvas.height / 2, '#fde047');
+                    }
+                    this.checkAchievements();
+
+                    let baseCoins = 2.00;
+                    if (br.type === 'turret') {
+                        baseCoins = 4.00;
+                    } else if (br.type === 'explosive') {
+                        baseCoins = 3.00;
+                    } else if (br.type === 'armored') {
+                        baseCoins = parseFloat((br.maxHp || 1.00) * 2.00);
+                    } else if (EXTRA_BRICK_TYPES[br.type]) {
+                        baseCoins = 4 + Math.floor((br.maxHp || 1) / 2);
+                    }
+
+                    if (this.player && this.player.coinBonusPercent > 0) {
+                        baseCoins = baseCoins * (1 + this.player.coinBonusPercent);
+                    }
+                    this.coins += baseCoins;
+                    
+                    if (this.player && this.player.lifesteal > 0) {
+                        this.player.hp = Math.min(this.player.maxHp, this.player.hp + (this.player.lifesteal * 2));
+                    }
+
+                    this.createExplosion(br.x + br.width / 2, br.y + br.height / 2, br.color, 10);
+                    this.spawnPickup(br);
+                    sfx.playHit(isCrit ? 700 : 500, 'sine', 0.08);
+
+                    if (br.type === 'explosive' && !isAoe) {
+                        sfx.playExplosion();
+                        this.addShake(6, 8);
+                        this.damageArea(br.x + br.width / 2, br.y + br.height / 2, 70, 2);
+                    }
+
+                    if (br.type === 'electric' && !isAoe) {
+                        const neighbors = this.bricks.filter(x => x !== br && Math.hypot((x.x + x.width / 2) - (br.x + br.width / 2), (x.y + x.height / 2) - (br.y + br.height / 2)) < 95).slice(0, 3);
+                        neighbors.forEach(x => this.damageBrick(x, 1, false, true));
+                    }
+
+                    const idx = this.bricks.indexOf(br);
+                    if (idx !== -1) this.bricks.splice(idx, 1);
+                } else {
+                    sfx.playHit(250, 'triangle', 0.05);
+                }
+            }
+
+            damageBoss(dmg, isCrit) {
+                if (!this.boss) return;
+                if (this.boss.invulnerable > 0) {
+                    this.addFloatingText('INVULNERÁVEL', this.boss.x + this.boss.width / 2, this.boss.y, '#e2e8f0');
+                    return;
+                }
+                dmg = Math.max(1, dmg * (this.relicPower.damage || 1));
+                this.boss.hp -= dmg;
+                const ratio = this.boss.hp / this.boss.maxHp;
+                const targetPhase = this.boss.profile.phases === 1 ? 1 : this.boss.profile.phases === 3 ? (ratio <= 1/3 ? 3 : ratio <= 2/3 ? 2 : 1) : (ratio <= 0.5 ? 2 : 1);
+                if (targetPhase > this.boss.phase) {
+                    this.boss.phase = targetPhase;
+                    this.boss.invulnerable = 90;
+                    this.boss.vx *= 1.3;
+                    this.boss.shootInterval = Math.max(28, this.boss.shootInterval * 0.72);
+                    this.addFloatingText(`FASE ${targetPhase}!`, this.boss.x + this.boss.width / 2, this.boss.y, '#f43f5e');
+                    document.getElementById('boss-name').innerText = `CHEFE: ${this.boss.profile.name} · FASE ${targetPhase}/${this.boss.profile.phases}`;
+                }
+                this.score += 20;
+                this.addShake(4, 5);
+                this.createExplosion(this.boss.x + this.boss.width / 2, this.boss.y + this.boss.height / 2, '#ec4899', 6);
+                this.addFloatingText(isCrit ? `CRIT! -${dmg}` : `-${dmg}`, this.boss.x + Math.random() * this.boss.width, this.boss.y + 20, isCrit ? '#ec4899' : '#f43f5e');
+
+                const percent = Math.max(0, (this.boss.hp / this.boss.maxHp) * 100);
+                document.getElementById('boss-hp-bar').style.width = `${percent}%`;
+                document.getElementById('boss-hp-text').innerText = `${Math.ceil(percent)}%`;
+
+                if (this.boss.hp <= 0) {
+                    this.score += 1000;
+                    let bossCoins = this.floor * 100.00;
+                    if (this.player && this.player.coinBonusPercent > 0) {
+                        bossCoins = bossCoins * (1 + this.player.coinBonusPercent);
+                    }
+                    this.coins += bossCoins;
+                    this.meta.stats.bossesDefeated++;
+                    const bossId = this.boss.profile.id;
+                    this.meta.stats.bossKills[bossId] = (this.meta.stats.bossKills[bossId] || 0) + 1;
+                    this.meta.essence += 12 + this.floor * 3;
+                    this.checkAchievements();
+                    this.saveMeta();
+                    this.createExplosion(this.boss.x + this.boss.width / 2, this.boss.y + this.boss.height / 2, '#f59e0b', 40);
+                    sfx.playExplosion();
+                    this.boss = null;
+                    document.getElementById('boss-hud').classList.add('hidden');
+                }
+            }
+
+            damageArea(x, y, radius, damage) {
+                const bricksToDamage = [...this.bricks];
+                for (let i = 0; i < bricksToDamage.length; i++) {
+                    const br = bricksToDamage[i];
+                    if (!br || br.hp <= 0) continue;
+                    
+                    const bx = br.x + br.width / 2;
+                    const by = br.y + br.height / 2;
+                    const dist = Math.hypot(bx - x, by - y);
+                    if (dist <= radius) {
+                        this.damageBrick(br, damage, false, true);
+                    }
+                }
+            }
+
+            awardFloorRelic() {
+                const relic = CAMPAIGN_RELICS[(this.floor - 1) % CAMPAIGN_RELICS.length];
+                this.meta.campaignRelics[relic.id] = 1;
+                relic.apply(this, this.meta.campaignRelics[relic.id]);
+                this.addFloatingText(`${relic.icon} ${relic.name} · NÍVEL ${this.meta.campaignRelics[relic.id]}`, canvas.width / 2, canvas.height * 0.48, '#fbbf24');
+                this.saveMeta();
+            }
+
+            roomCleared() {
+                if (this.isBonusStage) {
+                    this.finishBonusStage(true);
+                    return;
+                }
+                if (this.mode === 'infinite') {
+                    this.wave++;
+                    this.score += this.wave * 100;
+                    this.meta.stats.infiniteBest = Math.max(this.meta.stats.infiniteBest || 0, this.wave - 1);
+                    this.saveMeta();
+                    this.state = 'UPGRADE';
+                    sfx.playPowerup();
+                    this.showUpgradeScreen();
+                    this.saveCurrentGame();
+                    return;
+                }
+                const bossCompleted = this.stage === levelsBeforeBoss(this.floor) + 1;
+                this.state = 'UPGRADE';
+                sfx.playPowerup();
+                if (bossCompleted) {
+                    this.awardFloorRelic();
+                    if (this.floor >= 5) {
+                        this.victory();
+                        return;
+                    }
+                    this.isBonusStage = true;
+                    this.bonusSourceFloor = this.floor;
+                    this.meta.campaign = { active: true, floor: this.floor, stage: this.stage };
+                    this.checkAchievements();
+                    this.saveMeta();
+                    this.showUpgradeScreen();
+                    this.saveCurrentGame();
+                } else {
+                    this.stage++;
+                    this.meta.campaign = { active: true, floor: this.floor, stage: this.stage };
+                    this.saveMeta();
+                    this.showUpgradeScreen();
+                    this.saveCurrentGame();
+                }
+            }
+
+            finishBonusStage(won) {
+                const completedFloor = this.bonusSourceFloor || this.floor;
+                this.isBonusStage = false;
+                this.bonusSourceFloor = 0;
+                this.floor = Math.min(5, completedFloor + 1);
+                this.stage = 1;
+                this.meta.campaign = { active: true, floor: this.floor, stage: this.stage };
+                this.meta.stats.bestFloor = Math.max(this.meta.stats.bestFloor, this.floor);
+                this.saveMeta();
+                this.bonusTransitioned = !won;
+                if (won) {
+                    this.freeUpgradeAvailable = true;
+                    this.addFloatingText('BÔNUS CONCLUÍDO · MELHORIA GRÁTIS!', canvas.width / 2, canvas.height * 0.55, '#facc15');
+                    this.showUpgradeScreen(true);
+                } else {
+                    this.freeUpgradeAvailable = false;
+                    this.spawnLevel();
+                    this.state = 'PLAYING';
+                    this.saveCurrentGame();
+                }
+            }
+
+            victory() {
+                this.state = 'GAMEOVER';
+                this.clearCurrentGame();
+                this.meta.campaign = { active: false, floor: 1, stage: 1 };
+                this.meta.essence += 100;
+                this.saveMeta();
+                document.getElementById('gameover-title').innerText = 'Parabéns, você é o grande campeão!!!';
+                document.getElementById('gameover-subtitle').innerHTML = 'O Devorador do Abismo foi derrotado no setor <span id="summary-floor" class="text-cyan-400 font-bold">5-CHEFE</span>. As cinco relíquias permanentes foram preservadas.';
+                document.getElementById('summary-floor').innerText = '5-CHEFE';
+                document.getElementById('summary-score').innerText = this.score;
+                document.getElementById('summary-bricks').innerText = this.bricksDestroyed;
+                document.getElementById('summary-coins').innerText = this.coins.toFixed(2);
+                document.getElementById('gameover-screen').classList.remove('hidden');
+            }
+
+            gameOver() {
+                if (this.relicPower.revive > 0 && this.player) {
+                    this.relicPower.revive--;
+                    this.player.hp = 35;
+                    this.playerInvulnerable = 180;
+                    if (!this.balls.length) this.spawnBall();
+                    this.addFloatingText('PENA DA FÊNIX: RENASCIMENTO!', canvas.width / 2, canvas.height * 0.62, '#fbbf24');
+                    this.state = 'PLAYING';
+                    return;
+                }
+                if (this.state === 'GAMEOVER') return;
+                this.state = 'GAMEOVER';
+                this.clearCurrentGame();
+                this.saveRecord();
+                this.meta.campaign = { active: false, floor: 1, stage: 1 };
+                this.meta.stats.runs++;
+                this.meta.stats.bestFloor = Math.max(this.meta.stats.bestFloor, this.floor);
+                this.meta.stats.bestCoins = Math.max(this.meta.stats.bestCoins, Math.floor(this.coins));
+                if (this.mode === 'infinite') this.meta.stats.infiniteBest = Math.max(this.meta.stats.infiniteBest || 0, this.wave);
+                this.meta.essence += Math.max(3, Math.floor(this.score / 750) + this.floor * 2);
+                this.checkAchievements();
+                this.saveMeta();
+                document.getElementById('gameover-title').innerText = 'Você perdeu!';
+                document.getElementById('gameover-subtitle').innerHTML = `Sua plataforma foi destruída no setor <span id="summary-floor" class="text-cyan-400 font-bold">${this.floor}-${this.stage}</span>`;
+                document.getElementById('summary-floor').innerText = `${this.floor}-${this.stage}`;
+                document.getElementById('summary-score').innerText = this.score;
+                document.getElementById('summary-bricks').innerText = this.bricksDestroyed;
+                document.getElementById('summary-coins').innerText = this.coins.toFixed(2);
+                document.getElementById('gameover-screen').classList.remove('hidden');
+            }
+
+            updateHUD() {
+                if (!this.player) return;
+                document.getElementById('hp-display').innerText = `${Math.max(0, Math.ceil(this.player.hp))}/${this.player.maxHp}`;
+                const stageLabel = this.isBonusStage ? 'BÔNUS' : (this.stage === levelsBeforeBoss(this.floor) + 1 ? 'CHEFE' : this.stage);
+                document.getElementById('floor-display').innerText = this.mode === 'infinite' ? `∞ ${this.wave}` : `${this.floor}-${stageLabel}`;
+                document.getElementById('score-display').innerText = this.score;
+                document.getElementById('coins-display').innerText = this.coins.toFixed(2);
+
+                const secs = Math.ceil(Math.max(0, this.rowDropTimer) / 1000);
+                document.getElementById('drop-timer-display').innerText = `${secs}s`;
+
+                const shieldEl = document.getElementById('shield-indicator');
+                if (this.player.shieldActive && this.player.shieldCharges > 0) {
+                    shieldEl.classList.remove('hidden');
+                    document.getElementById('shield-text').innerText = `ESCUDO (${this.player.shieldCharges})`;
+                } else {
+                    shieldEl.classList.add('hidden');
+                }
+
+                const perksBar = document.getElementById('perks-bar');
+                perksBar.innerHTML = '';
+                CAMPAIGN_RELICS.forEach(relic => {
+                    const lvl = this.meta.campaignRelics[relic.id] || 0;
+                    const badge = document.createElement('div');
+                    badge.className = `border rounded-lg p-2 ${lvl ? 'bg-purple-950/70 border-purple-400/50' : 'bg-slate-950/60 border-slate-700 opacity-60'}`;
+                    badge.innerHTML = `<div class="flex justify-between gap-2"><span class="font-orbitron text-[10px] text-purple-200">${relic.icon} ${relic.name}</span><span class="text-amber-300 font-bold">NV ${lvl}</span></div><div class="text-[10px] text-slate-400 mt-1">${relic.desc}</div>`;
+                    perksBar.appendChild(badge);
+                });
+                const purchases = Object.entries(this.upgradesLevels).filter(([, lvl]) => lvl > 0);
+                if (purchases.length) {
+                    const title = document.createElement('div');
+                    title.className = 'font-orbitron text-[10px] text-cyan-300 mt-2';
+                    title.textContent = 'COMPRAS DESTA PARTIDA';
+                    perksBar.appendChild(title);
+                    purchases.forEach(([id, lvl]) => {
+                        const upg = ALL_UPGRADES.find(u => u.id === id);
+                        if (!upg) return;
+                        const badge = document.createElement('div');
+                        badge.className = 'bg-cyan-950/40 border border-cyan-700/40 text-cyan-200 text-[10px] px-2 py-1 rounded';
+                        badge.textContent = `${upg.title} · NV ${lvl}`;
+                        perksBar.appendChild(badge);
+                    });
+                }
+                const laserInfo = document.getElementById('laser-info');
+                const laserAvailable = this.player.hasLaser || this.hasEffect('laser');
+                laserInfo.classList.toggle('hidden', !laserAvailable);
+                if (laserAvailable) {
+                    const maxReload = Math.max(10, 40 - ((this.player.laserLevel || 1) * 8));
+                    const remaining = Math.max(0, this.player.laserCooldown || 0);
+                    const totalSeconds = (maxReload / 60).toFixed(1);
+                    const hasActiveBall = this.balls.some(ball => ball && !ball.attached);
+                    document.getElementById('laser-reload').textContent = !hasActiveBall ? 'AGUARDANDO BOLA' : (remaining <= 0 ? `AUTOMÁTICO · ${totalSeconds}s` : `${(remaining / 60).toFixed(1)}s / ${totalSeconds}s`);
+                    document.getElementById('laser-reload-bar').style.width = `${Math.max(0, Math.min(100, (1 - remaining / maxReload) * 100))}%`;
+                }
+                document.getElementById('campaign-status').textContent = this.mode === 'infinite' ? `Modo infinito · Campo ${this.wave} · Recorde ${this.meta.stats.infiniteBest || 0}` : (this.isBonusStage ? `Fase bônus após o andar ${this.bonusSourceFloor}` : `Andar ${this.floor} · ${stageLabel === 'CHEFE' ? 'Chefe' : 'Nível ' + stageLabel}`);
+                lucide.createIcons();
+            }
+
+            addShake(intensity, duration) {
+                this.shakeIntensity = intensity;
+                this.shakeTime = duration;
+            }
+
+            createExplosion(x, y, color, count = 10) {
+                for (let i = 0; i < count; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const spd = Math.random() * 4 + 1;
+                    this.particles.push({
+                        x: x,
+                        y: y,
+                        vx: Math.cos(angle) * spd,
+                        vy: Math.sin(angle) * spd,
+                        size: Math.random() * 3 + 2,
+                        color: color,
+                        life: 1.0
+                    });
+                }
+            }
+
+            addFloatingText(text, x, y, color = '#ffffff') {
+                this.floatingTexts.push({
+                    text: text,
+                    x: x,
+                    y: y,
+                    color: color,
+                    life: 1.0
+                });
+            }
+
+            draw() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                ctx.save();
+
+                if (this.shakeTime > 0) {
+                    const dx = (Math.random() - 0.5) * this.shakeIntensity;
+                    const dy = (Math.random() - 0.5) * this.shakeIntensity;
+                    ctx.translate(dx, dy);
+                }
+
+                const floorThemes = [
+                    { bgGrad: ['#090d16', '#030208'], line: 'rgba(6, 182, 212, 0.07)', shape: 'rgba(6, 182, 212, 0.03)', type: 'grid' },
+                    { bgGrad: ['#12081f', '#030208'], line: 'rgba(168, 85, 247, 0.07)', shape: 'rgba(168, 85, 247, 0.03)', type: 'circles' },
+                    { bgGrad: ['#1c0c08', '#030208'], line: 'rgba(245, 158, 11, 0.07)', shape: 'rgba(245, 158, 11, 0.03)', type: 'hexagons' },
+                    { bgGrad: ['#061713', '#030208'], line: 'rgba(16, 185, 129, 0.07)', shape: 'rgba(16, 185, 129, 0.03)', type: 'triangles' },
+                    { bgGrad: ['#1c0816', '#030208'], line: 'rgba(236, 72, 153, 0.07)', shape: 'rgba(236, 72, 153, 0.03)', type: 'diamonds' }
+                ];
+
+                const theme = floorThemes[Math.min(this.floor - 1, floorThemes.length - 1)];
+
+                const bgGrad = ctx.createRadialGradient(canvas.width / 2, canvas.height / 2, 50, canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height));
+                bgGrad.addColorStop(0, theme.bgGrad[0]);
+                bgGrad.addColorStop(1, theme.bgGrad[1]);
+                ctx.fillStyle = bgGrad;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.strokeStyle = theme.line;
+                ctx.fillStyle = theme.shape;
+                ctx.lineWidth = 1;
+
+                if (theme.type === 'grid') {
+                    for (let x = 0; x < canvas.width; x += 40) {
+                        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+                    }
+                    for (let y = 0; y < canvas.height; y += 40) {
+                        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+                    }
+                } else if (theme.type === 'circles') {
+                    for (let r = 50; r < Math.max(canvas.width, canvas.height); r += 80) {
+                        ctx.beginPath();
+                        ctx.arc(canvas.width / 2, canvas.height / 2, r, 0, Math.PI * 2);
+                        ctx.stroke();
+                    }
+                } else if (theme.type === 'hexagons') {
+                    const step = 60;
+                    for (let x = 20; x < canvas.width; x += step) {
+                        for (let y = 20; y < canvas.height; y += step) {
+                            ctx.beginPath();
+                            ctx.arc(x, y, 18, 0, Math.PI * 2);
+                            ctx.stroke();
+                        }
+                    }
+                } else if (theme.type === 'triangles' || theme.type === 'diamonds') {
+                    const size = 50;
+                    for (let x = 0; x < canvas.width; x += size * 2) {
+                        for (let y = 0; y < canvas.height; y += size * 2) {
+                            ctx.beginPath();
+                            ctx.rect(x + 10, y + 10, size, size);
+                            ctx.stroke();
+                        }
+                    }
+                }
+
+                if (this.player) {
+                    ctx.strokeStyle = 'rgba(239, 68, 68, 0.25)';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([6, 6]);
+                    ctx.beginPath();
+                    ctx.moveTo(0, this.player.y - 40);
+                    ctx.lineTo(canvas.width, this.player.y - 40);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                if (this.player && this.player.shieldActive) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = '#06b6d4';
+                    ctx.strokeStyle = '#06b6d4';
+                    ctx.lineWidth = 7;
+                    const visibleShieldBars = Math.min(2, Math.max(1, this.player.shieldCharges));
+                    for (let shieldBar = 0; shieldBar < visibleShieldBars; shieldBar++) {
+                        const shieldY = canvas.height - 5 - shieldBar * 11;
+                        ctx.beginPath();
+                        ctx.moveTo(0, shieldY);
+                        ctx.lineTo(canvas.width, shieldY);
+                        ctx.stroke();
+                    }
+                    ctx.shadowBlur = 0;
+                }
+
+                if (this.player) {
+                    if (this.playerInvulnerable > 0 && Math.floor(this.playerInvulnerable / 5) % 2 === 0) ctx.globalAlpha = 0.35;
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = this.player.color;
+                    ctx.fillStyle = this.player.color;
+                    
+                    ctx.beginPath();
+                    ctx.roundRect(this.player.x, this.player.y, this.player.width, this.player.height, 7);
+                    ctx.fill();
+
+                    if (this.player.hasLaser || this.hasEffect('laser')) {
+                        const leftGunX = this.player.x + 3;
+                        const rightGunX = this.player.x + this.player.width - 17;
+                        ctx.save();
+                        ctx.shadowBlur = 14;
+                        ctx.shadowColor = '#f59e0b';
+                        ctx.fillStyle = '#1e293b';
+                        ctx.strokeStyle = '#fbbf24';
+                        ctx.lineWidth = 2;
+                        [leftGunX, rightGunX].forEach(gunX => {
+                            ctx.beginPath();
+                            ctx.roundRect(gunX, this.player.y - 7, 14, 18, 4);
+                            ctx.fill();
+                            ctx.stroke();
+                            ctx.fillStyle = '#f59e0b';
+                            ctx.fillRect(gunX + 4, this.player.y - 14, 6, 10);
+                            ctx.fillStyle = '#fef3c7';
+                            ctx.fillRect(gunX + 5, this.player.y - 14, 4, 3);
+                            ctx.fillStyle = '#1e293b';
+                        });
+                        if (this.player.laserFlash > 0) {
+                            ctx.fillStyle = '#fef08a';
+                            ctx.shadowBlur = 22;
+                            [this.player.x + 10, this.player.x + this.player.width - 10].forEach(mx => {
+                                ctx.beginPath();
+                                ctx.arc(mx, this.player.y - 16, 4 + this.player.laserFlash, 0, Math.PI * 2);
+                                ctx.fill();
+                            });
+                        }
+                        ctx.restore();
+                    }
+                    ctx.shadowBlur = 0;
+                    ctx.globalAlpha = 1;
+                }
+
+                this.bricks.forEach(br => {
+                    if (!br) return;
+                    ctx.save();
+                    if (br.type === 'invisible' && !br.visible && !this.relicPower.reveal) ctx.globalAlpha = 0.10;
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = br.color;
+                    ctx.fillStyle = br.color;
+                    ctx.beginPath();
+                    ctx.roundRect(br.x, br.y, br.width, br.height, 4);
+                    ctx.fill();
+
+                    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                    ctx.fillRect(br.x + 2, br.y + 2, br.width - 4, 3);
+
+                    const symbols = { regenerative: '↻', invisible: '◌', teleporter: '⇄', freezing: '❄', fortified: '▣', electric: 'ϟ', unbreakable: '∞' };
+                    if (symbols[br.type]) {
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = 'bold 12px sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(symbols[br.type], br.x + br.width / 2, br.y + br.height / 2 + 4);
+                    }
+
+                    if (br.maxHp > 1 && !symbols[br.type]) {
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = '10px Orbitron';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(br.hp, br.x + br.width / 2, br.y + br.height / 2 + 3);
+                    }
+                    ctx.restore();
+                });
+                ctx.shadowBlur = 0;
+
+                if (this.boss) {
+                    ctx.save();
+                    ctx.shadowBlur = 20;
+                    ctx.shadowColor = this.boss.color;
+                    ctx.fillStyle = this.boss.color;
+                    ctx.strokeStyle = '#fda4af';
+                    ctx.lineWidth = 3;
+                    if (this.boss.invulnerable > 0) {
+                        ctx.globalAlpha = 0.45 + Math.sin(this.elapsed / 70) * 0.25;
+                        ctx.strokeStyle = '#ffffff';
+                        ctx.lineWidth = 6;
+                    }
+
+                    const bx = this.boss.x;
+                    const by = this.boss.y;
+                    const bw = this.boss.width;
+                    const bh = this.boss.height;
+                    const sides = Math.max(1, this.floor);
+
+                    ctx.beginPath();
+                    ctx.moveTo(bx, by);
+                    ctx.lineTo(bx + bw, by);
+
+                    ctx.lineTo(bx + bw, by + bh * 0.3);
+
+                    const bottomY = by + bh;
+                    for (let s = sides; s >= 0; s--) {
+                        const px = bx + (bw / sides) * s;
+                        const py = (s % 2 === 1) ? bottomY : bottomY - 12;
+                        ctx.lineTo(px, py);
+                    }
+
+                    ctx.lineTo(bx, by + bh * 0.3);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#ffffff';
+                    for (let c = 1; c <= 3; c++) {
+                        ctx.beginPath();
+                        ctx.arc(bx + (bw / 4) * c, by + 20, 7, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    ctx.restore();
+                }
+
+                this.telegraphs.forEach(t => {
+                    const pulse = 0.25 + 0.45 * (1 - t.delay / t.maxDelay);
+                    ctx.save();
+                    ctx.globalAlpha = pulse;
+                    ctx.strokeStyle = t.kind === 'gravity' ? '#22d3ee' : '#fb7185';
+                    ctx.fillStyle = t.kind === 'gravity' ? '#22d3ee' : '#fb7185';
+                    ctx.lineWidth = 3;
+                    ctx.setLineDash([8, 6]);
+                    if (t.kind === 'beam') ctx.strokeRect(t.x - 12, t.y, 24, canvas.height - t.y);
+                    else {
+                        ctx.beginPath(); ctx.arc(t.x, t.y, t.kind === 'gravity' ? 55 : 28, 0, Math.PI * 2); ctx.stroke();
+                    }
+                    ctx.setLineDash([]);
+                    ctx.restore();
+                });
+
+                this.pickups.forEach(p => {
+                    ctx.save();
+                    ctx.shadowBlur = 12;
+                    ctx.shadowColor = '#facc15';
+                    ctx.fillStyle = '#facc15';
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#111827';
+                    ctx.font = 'bold 12px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(({ slow: 'S', wide: 'W', coins: '$', heal: '+', laser: 'L' })[p.type], p.x, p.y + 4);
+                    ctx.restore();
+                });
+
+                this.balls.forEach(b => {
+                    if (!b) return;
+
+                    if (this.player && this.player.fireball) {
+                        ctx.save();
+                        ctx.shadowBlur = 18;
+                        ctx.shadowColor = '#ea580c';
+
+                        const fireGradient = ctx.createRadialGradient(b.x, b.y, b.radius * 0.2, b.x, b.y, b.radius * 1.8);
+                        fireGradient.addColorStop(0, '#fef08a');
+                        fireGradient.addColorStop(0.4, '#f97316');
+                        fireGradient.addColorStop(0.8, '#dc2626');
+                        fireGradient.addColorStop(1, 'transparent');
+
+                        ctx.fillStyle = fireGradient;
+                        ctx.beginPath();
+                        ctx.arc(b.x, b.y, b.radius * 1.8, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        ctx.fillStyle = '#fff7ed';
+                        ctx.beginPath();
+                        ctx.arc(b.x, b.y, b.radius * 0.8, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+
+                    } else if (this.player && this.player.piercingBall) {
+                        ctx.save();
+                        ctx.shadowBlur = 12;
+                        ctx.shadowColor = '#94a3b8';
+
+                        ctx.fillStyle = '#cbd5e1';
+                        ctx.beginPath();
+                        ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                        ctx.fill();
+
+                        ctx.fillStyle = '#f8fafc';
+                        ctx.strokeStyle = '#475569';
+                        ctx.lineWidth = 1;
+                        const spikeCount = 8;
+                        const spikeLen = b.radius * 0.6;
+
+                        for (let s = 0; s < spikeCount; s++) {
+                            const angle = (Math.PI * 2 / spikeCount) * s;
+                            const nextAngle = angle + (Math.PI / spikeCount);
+                            const prevAngle = angle - (Math.PI / spikeCount);
+
+                            ctx.beginPath();
+                            ctx.moveTo(b.x + Math.cos(angle) * (b.radius + spikeLen), b.y + Math.sin(angle) * (b.radius + spikeLen));
+                            ctx.lineTo(b.x + Math.cos(nextAngle) * (b.radius * 0.8), b.y + Math.sin(nextAngle) * (b.radius * 0.8));
+                            ctx.lineTo(b.x + Math.cos(prevAngle) * (b.radius * 0.8), b.y + Math.sin(prevAngle) * (b.radius * 0.8));
+                            ctx.closePath();
+                            ctx.fill();
+                            ctx.stroke();
+                        }
+
+                        ctx.restore();
+
+                    } else {
+                        const baseColor = this.selectedBallColor || '#ffffff';
+                        ctx.shadowBlur = 12;
+                        ctx.shadowColor = baseColor;
+                        ctx.fillStyle = baseColor;
+                        ctx.beginPath();
+                        ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                    }
+                });
+
+                this.projectiles.forEach(p => {
+                    if (!p) return;
+                    ctx.fillStyle = p.isPlayer ? '#f59e0b' : '#ef4444';
+                    ctx.fillRect(p.x - 2, p.y, 4, 10);
+                });
+
+                this.particles.forEach(pt => {
+                    if (!pt) return;
+                    ctx.globalAlpha = pt.life;
+                    ctx.fillStyle = pt.color;
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1.0;
+
+                this.floatingTexts.forEach(ft => {
+                    if (!ft) return;
+                    ctx.globalAlpha = ft.life;
+                    ctx.fillStyle = ft.color;
+                    ctx.font = 'bold 12px Orbitron';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(ft.text, ft.x, ft.y);
+                });
+                ctx.globalAlpha = 1.0;
+
+                ctx.restore();
+            }
+        }
+
+        const game = new Game();
+
+        const STEP = 1000 / 60;
+        let accumulator = 0;
+        let lastFrameTime = performance.now();
+        function gameLoop(now) {
+            const dt = now - lastFrameTime;
+            lastFrameTime = now;
+
+            accumulator += Math.min(dt, 80);
+            let ticks = 0;
+            while (accumulator >= STEP && ticks++ < 5) {
+                game.update(STEP);
+                accumulator -= STEP;
+            }
+            if (ticks >= 5) accumulator = 0;
+            game.draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                game.saveCurrentGame();
+                if (game.state === 'PLAYING') game.togglePause();
+            }
+            lastFrameTime = performance.now();
+            accumulator = 0;
+        });
+        window.addEventListener('beforeunload', () => game.saveCurrentGame());
+
+        window.onload = () => {
+            lastFrameTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        };
+    </script>
+</body>
+</html>
